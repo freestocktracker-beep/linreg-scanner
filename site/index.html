@@ -281,8 +281,32 @@ dialog::backdrop{background:rgba(11,11,11,.45)}
   padding:9px 13px;margin:2px 0 8px;font-size:12.5px;line-height:1.6;color:var(--ink-2)}
 .outlook p{margin:4px 0}
 .outlook b{color:var(--ink);font-weight:650;font-variant-numeric:tabular-nums}
-.outlook .oh{font-weight:650;color:var(--ink);font-size:12.5px}
+.outlook .oh{font-weight:650;color:var(--ink);font-size:12.5px;display:flex;align-items:center}
 .outlook .hint{font-size:11.5px;color:var(--muted)}
+
+/* forecast confidence — three pips, deliberately not red/green: this is about
+   how well the past fitted, not about direction */
+.conf{display:inline-flex;align-items:center;gap:6px;font-weight:400;cursor:help;
+  font-size:11.5px;color:var(--muted)}
+.conf .cw{text-transform:uppercase;letter-spacing:.05em;font-size:9.5px}
+.conf b{font-weight:650;font-size:11.5px;color:var(--ink-2)}
+.conf .pips{display:inline-flex;gap:2px}
+.conf .pips i{width:12px;height:6px;border-radius:2px;background:var(--hair)}
+.conf .pips i.on{background:var(--muted)}
+.conf[data-lv=moderate] .pips i.on{background:var(--ink-2)}
+.conf[data-lv=high] .pips i.on{background:var(--accent)}
+.conf[data-lv=high] b{color:var(--accent-text)}
+
+/* forecast checkpoints — the same numbers as the dots on the chart */
+.fcgrid{display:grid;grid-template-columns:auto auto auto 1fr;gap:0 14px;margin:8px 0 4px}
+.fcgrid .fh{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+  padding-bottom:3px;border-bottom:1px solid var(--hair);margin-bottom:3px}
+.fcgrid .fd{font-size:12.5px;color:var(--ink-2);padding:3px 0;display:flex;
+  align-items:baseline;gap:6px}
+.fcgrid .fd.num{font-variant-numeric:tabular-nums;color:var(--ink)}
+.fcgrid .fd.up{color:var(--up)}
+.fcgrid .fd.down{color:var(--down)}
+.fcgrid .fsub{color:var(--muted);font-size:11px}
 
 /* the "How to read this" guide */
 .guide{padding:2px 18px 18px;font-size:13.5px;line-height:1.65;color:var(--ink)}
@@ -327,9 +351,35 @@ code{font-family:var(--mono);background:var(--surface-2);border:1px solid var(--
 .pre{background:var(--surface);border:1px solid var(--hair);border-radius:8px;padding:10px;
   font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;
   color:var(--ink);max-height:200px;overflow:auto}
-@media (max-width:1439px){ .xw{display:none} }
-@media (max-width:1330px){ .mo{display:none} }
+/* Columns are chosen in the Columns menu, not by viewport width — a column you
+   asked for shouldn't silently vanish when you resize. Only the two widest text
+   columns still drop away on genuinely small screens. */
 @media (max-width:1160px){ .sect{display:none} }
+
+/* the Columns menu */
+.colwrap{position:relative}
+.colwrap > summary{
+  list-style:none;cursor:pointer;user-select:none;
+  font:inherit;font-size:13px;color:var(--ink);background:var(--surface-2);
+  border:1px solid var(--hair);border-radius:8px;padding:6px 10px;min-height:34px;
+  display:inline-flex;align-items:center;gap:6px
+}
+.colwrap > summary::-webkit-details-marker{display:none}
+.colwrap[open] > summary,.colwrap > summary:hover{border-color:var(--accent);color:var(--accent-text)}
+.colmenu{
+  position:absolute;right:0;top:calc(100% + 6px);z-index:40;width:212px;
+  background:var(--surface);border:1px solid var(--hair);border-radius:10px;
+  box-shadow:var(--shadow);padding:8px;display:flex;flex-direction:column;gap:1px
+}
+.colmenu label{
+  display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink);
+  padding:4px 6px;border-radius:6px;cursor:pointer
+}
+.colmenu label:hover{background:var(--surface-2)}
+.colmenu label.off{color:var(--muted);cursor:default}
+.colmenu label.off:hover{background:none}
+.colmenu input{accent-color:var(--accent);margin:0}
+.colmenu .btn{margin-top:6px;justify-content:center}
 @media (max-width:620px){
   .nm{display:none}
   .wrap{padding:16px 12px 48px}
@@ -402,6 +452,10 @@ code{font-family:var(--mono);background:var(--surface-2);border:1px solid var(--
   <button class="btn" id="thinbtn" aria-pressed="false" title="Hide stocks without a full window of history">Full history only</button>
   <button class="clearbtn" id="clear" hidden title="Back to the full list">✕ Clear filters</button>
   <span class="fcount" id="count"></span>
+  <details class="colwrap" id="colwrap">
+    <summary title="Choose which columns the table shows">▤ Columns</summary>
+    <div class="colmenu" id="colmenu"></div>
+  </details>
 </div>
 
 <div class="tablecard" id="card">
@@ -524,34 +578,80 @@ const DEFS = {
   method: "Every stock gets a straight trend line fitted through its last 100 bars, with a channel drawn two typical wobbles (2σ) above and below — the same construction as TradingView's Linear Regression Channel. The table ranks stocks by where price sits inside that channel, lowest first. It refreshes itself three times each trading day.",
 };
 
-/* ------------------------------------------------------------------ the table */
+/* ------------------------------------------------------------------ the table
+   Which columns appear is entirely the reader's choice — `fixed` ones are the
+   spine of the table and can't be turned off, everything else is a checkbox in
+   the Columns menu. `on` is only the starting state for a first-time visitor;
+   after that their saved set wins. The defaults are sized to fit a ~1100px
+   window without crushing the company names. */
+const CHG_TAG    = { "1d": "1d", "1wk": "1w", "1mo": "1mo" };
+const CHG_PERIOD = { "1d": "trading day", "1wk": "week", "1mo": "month" };
+const chgTitle = () => `Chg ${CHG_TAG[S.tf] || ""}`.trim();
+
 const COLS = [
-  { k: "rank",   t: "#",      n: true, def: DEFS.rank },
-  { k: "_star",  t: "★",      nosort: true, cls: "stcol" },
-  { k: "sym",    t: "Symbol" },
-  { k: "name",   t: "Company", cls: "nm" },
-  { k: "sector", t: "Sector",  cls: "sect" },
-  { k: "price",  t: "Price",  n: true },
-  { k: "chg",    t: "Chg",    n: true, def: DEFS.chg },
-  { k: "lower",  t: "Lower",  n: true, cls: "mo", def: DEFS.lower },
-  { k: "upper",  t: "Upper",  n: true, cls: "mo", def: DEFS.upper },
-  { k: "pos",    t: "Position in channel", def: DEFS.pos },
-  { k: "_d",     t: "Δ",      n: true, sortk: "_delta", def: DEFS.delta },
-  { k: "dir",    t: "Trend",  def: DEFS.trend },
-  { k: "r",      t: "R",      n: true, def: DEFS.r },
-  { k: "swings", t: "Swings", n: true, cls: "xw", def: DEFS.swings },
+  { k: "rank",   t: "#",       n: true, def: DEFS.rank, on: 1, fixed: 1 },
+  { k: "_star",  t: "★",       nosort: true, cls: "stcol", on: 1, fixed: 1, lbl: "Favorite" },
+  { k: "sym",    t: "Symbol",  on: 1, fixed: 1 },
+  { k: "name",   t: "Company", cls: "nm", on: 1 },
+  { k: "sector", t: "Sector",  cls: "sect", on: 1 },
+  { k: "cap",    t: "Market cap", n: true, def: DEFS.cap, on: 1 },
+  { k: "price",  t: "Price",   n: true, on: 1 },
+  { k: "chg",    t: chgTitle,  n: true, def: DEFS.chg, on: 1, lbl: "Change" },
+  { k: "pos",    t: "Position in channel", def: DEFS.pos, on: 1, fixed: 1 },
+  { k: "swings", t: "Swings",  n: true, def: DEFS.swings, on: 1 },
+  { k: "dir",    t: "Trend",   def: DEFS.trend, on: 1 },
+  { k: "lower",  t: "Lower",   n: true, def: DEFS.lower, on: 0 },
+  { k: "upper",  t: "Upper",   n: true, def: DEFS.upper, on: 0 },
+  { k: "_d",     t: "Δ",       n: true, sortk: "_delta", def: DEFS.delta, on: 0,
+    lbl: "Δ since last scan" },
+  { k: "r",      t: "R",       n: true, def: DEFS.r, on: 0, lbl: "R (straightness)" },
+  { k: "wr",     t: "%R",      n: true, def: DEFS.wr, on: 0, lbl: "Williams %R" },
+  { k: "hi52",   t: "Off high", n: true, on: 0, lbl: "Below 52-week high",
+    def: "How far below its highest close of the past year the stock is trading." },
 ];
+const COL_LBL = c => c.lbl || (typeof c.t === "function" ? c.t() : c.t);
+
+S.cols = new Set(store.get("linreg.cols", COLS.filter(c => c.on).map(c => c.k)));
+COLS.forEach(c => { if (c.fixed) S.cols.add(c.k); });
+const shownCols = () => COLS.filter(c => S.cols.has(c.k));
+
+function colMenu() {
+  const box = $("#colmenu");
+  box.textContent = "";
+  for (const c of COLS) {
+    const lab = el("label", c.fixed ? "off" : "");
+    const cb = el("input");
+    cb.type = "checkbox";
+    cb.checked = S.cols.has(c.k);
+    cb.disabled = !!c.fixed;
+    cb.onchange = () => {
+      cb.checked ? S.cols.add(c.k) : S.cols.delete(c.k);
+      store.set("linreg.cols", [...S.cols]);
+      buildHead(); render();
+    };
+    lab.append(cb, COL_LBL(c));
+    if (c.fixed) lab.title = "Always shown";
+    box.append(lab);
+  }
+  const reset = el("button", "btn sm", "Reset to defaults");
+  reset.onclick = () => {
+    S.cols = new Set(COLS.filter(c => c.on || c.fixed).map(c => c.k));
+    store.set("linreg.cols", [...S.cols]);
+    colMenu(); buildHead(); render();
+  };
+  box.append(reset);
+}
 
 function buildHead() {
   const tr = $("#hrow");
   tr.textContent = "";
-  for (const c of COLS) {
+  for (const c of shownCols()) {
     const th = el("th", (c.n ? "n " : "") + (c.cls || ""));
-    th.append(c.t);
+    th.append(typeof c.t === "function" ? c.t() : c.t);
     const key = c.sortk || c.k;
     if (c.nosort) { th.style.cursor = "default"; th.title = "Favorites"; }
     else {
-      attachTip(th, c.def ? c.def + " Click to sort." : "Sort by " + c.t);
+      attachTip(th, (c.def || "Sort by " + COL_LBL(c)) + " Click to sort.");
       if (S.sort.key === key) th.append(" ", el("span", "ar", S.sort.dir > 0 ? "▲" : "▼"));
       th.onclick = () => {
         S.sort = S.sort.key === key ? { key, dir: -S.sort.dir }
@@ -651,7 +751,7 @@ function row(d) {
   tr.onclick = e => { if (!e.target.closest(".star")) openSym(d.sym); };
   tr.onkeydown = e => { if (e.key === "Enter") openSym(d.sym); };
 
-  for (const c of COLS) {
+  for (const c of shownCols()) {
     const td = el("td", (c.n ? "n " : "") + (c.cls || ""));
     if (c.k === "_star") td.append(starButton(d.sym));
     else if (c.k === "sym") {
@@ -674,7 +774,18 @@ function row(d) {
     } else if (c.k === "chg") {
       td.textContent = d.chg == null ? "—" : (d.chg > 0 ? "+" : "") + fmt(d.chg, 2) + "%";
       if (d.chg != null) td.style.color = d.chg >= 0 ? "var(--up)" : "var(--down)";
-      td.title = "Change over the last " + (S.meta ? S.meta.timeframe_name.toLowerCase() : "") + " bar";
+      td.title = `Change from the previous ${CHG_PERIOD[S.tf] || "bar"}'s close`;
+    } else if (c.k === "cap") {
+      td.textContent = fmtCap(d.cap);
+      td.title = d.tier && d.tier !== "Unknown" ? d.tier : "";
+    } else if (c.k === "wr") {
+      td.textContent = d.wr == null ? "—" : fmt(d.wr, 1);
+      if (d.wr != null) {
+        td.style.color = d.wr <= -80 ? "var(--dv-lo1)" : d.wr >= -20 ? "var(--dv-hi1)" : "";
+        td.title = d.wr <= -80 ? "Oversold" : d.wr >= -20 ? "Overbought" : "Mid-range";
+      }
+    } else if (c.k === "hi52") {
+      td.textContent = d.hi52 == null ? "—" : fmt(d.hi52, 1) + "%";
     } else if (["price", "lower", "upper"].includes(c.k)) td.textContent = money(d[c.k]);
     else if (c.k === "r") { td.textContent = fmt(d.r, 3); td.title = d.strength; }
     else td.textContent = d[c.k];
@@ -977,6 +1088,35 @@ function barLabel(t) {
 const PAD_FRAC = 0.15;      // empty room kept to the right of the newest bar
 const MIN_BARS = 15;        // hardest zoom-in
 
+/* How far ahead the forecast reaches, in bars, per timeframe. Three checkpoints
+   so the projection reads as dated milestones rather than a vague cone — and
+   deliberately short: a 100-bar daily regression has nothing useful to say about
+   next year. */
+const FC_MILES = {
+  "1d":  [[10, "2 weeks"], [21, "1 month"], [42, "2 months"]],
+  "1wk": [[4, "1 month"], [13, "3 months"], [26, "6 months"]],
+  "1mo": [[3, "3 months"], [6, "6 months"], [12, "1 year"]],
+};
+const DAYS_PER_BAR = { "1d": 1.45, "1wk": 7, "1mo": 30.44 };
+const miles = () => FC_MILES[S.tf] || FC_MILES["1mo"];
+const fcReach = () => miles()[miles().length - 1][0];
+
+/* Confidence is about the past, not the future: how straight the trend has been,
+   whether we have a full window, and how tight the statistical range still is at
+   the far checkpoint. Deliberately not called "probability". */
+function fcConfidence(d, seH, hMax) {
+  const fit = Math.min(1, Math.abs(d.r || 0));
+  const hist = Math.min(1, (d.bars || 0) / 100);
+  const spread = d.price ? (2 * seH(hMax)) / d.price : 1;
+  const tight = 1 - Math.min(1, spread / 0.30);
+  const score = 0.45 * fit + 0.15 * hist + 0.40 * tight;
+  return {
+    score, fit, hist, spread, tight,
+    pips: score >= 0.65 ? 3 : score >= 0.42 ? 2 : 1,
+    label: score >= 0.65 ? "High" : score >= 0.42 ? "Moderate" : "Low",
+  };
+}
+
 function chartPanel(d, ser) {
   const n = ser.c.length;
   // The channel is fitted on the last `winBars` bars only. Everything to the
@@ -991,7 +1131,11 @@ function chartPanel(d, ser) {
   const readout = el("div", "readout");
   let cross = null;                             // bar index under the pointer, or null
 
-  const pad = () => Math.max(4, Math.round((i1 - i0 + 1) * (S.fc ? 0.27 : PAD_FRAC)));
+  // with the forecast on, the empty space to the right has to actually reach the
+  // last checkpoint — but never swallow more than a third of the chart
+  const pad = () => S.fc
+    ? Math.max(4, Math.min(Math.round(fcReach() * 1.12), Math.round((i1 - i0 + 1) * 0.5)))
+    : Math.max(4, Math.round((i1 - i0 + 1) * PAD_FRAC));
   const span = () => (i1 + pad()) - i0;         // x domain width, in bars
   const dev = (d.upper - d.lower) / 4;
   const midAt = i => d.mid - d.slope * (n - 1 - i);
@@ -1005,6 +1149,16 @@ function chartPanel(d, ser) {
     const fromLastBar = Math.round((Date.parse(ser.earn) - Date.parse(last)) / 864e5);
     if (fromLastBar > 0) earnAt = (n - 1) + fromLastBar * barsPerDay;
   }
+
+  /* calendar date h bars past the last close, for the forecast checkpoints */
+  const lastBarMs = () => {
+    const t = ser.t[n - 1];
+    return Date.parse(t.length === 7 ? t + "-01T00:00:00Z" : t + "T00:00:00Z");
+  };
+  const fcDate = h => new Date(lastBarMs() + h * (DAYS_PER_BAR[S.tf] || 30.44) * 864e5)
+    .toLocaleDateString(undefined, S.tf === "1mo"
+      ? { month: "short", year: "numeric", timeZone: "UTC" }
+      : { month: "short", day: "numeric", timeZone: "UTC" });
 
   /* ---- geometry helpers shared by both panels ---- */
   const W = 880, PL = 16, PR = 74;
@@ -1174,12 +1328,32 @@ function chartPanel(d, ser) {
         svg.append(mk("line", { x1: X(n - 1), y1: Y(midAt(n - 1)), x2: X(n - 1 + hE),
           y2: Y(midAt(n - 1 + hE)), stroke: css("--accent"), "stroke-width": 1.5,
           "stroke-dasharray": "5 4" }));
-        const lblY = Y(midAt(n - 1 + hE));
-        if (lblY > PT + 6 && lblY < H - PB - 6) {
-          const t2 = mk("text", { x: X(n - 1 + hE) - 5, y: lblY - 6, "text-anchor": "end",
-            fill: css("--accent-text"), "font-size": 10.5, "font-weight": 650 });
-          t2.textContent = "trend → " + money(midAt(n - 1 + hE));
-          svg.append(t2);
+
+        // dated checkpoints: the forecast as specific numbers on specific dates,
+        // not just a shape. Each dot is where the fitted trend lands on that date.
+        let lastPx = -1e9, lastDx = X(n - 1) + 30;   // the axis already labels the last bar
+        for (const [h] of miles()) {
+          if (h > hE + 0.01) continue;
+          const x = X(n - 1 + h), yv = Y(midAt(n - 1 + h));
+          if (yv < PT || yv > H - PB) continue;
+          svg.append(mk("line", { x1: x, x2: x, y1: yv, y2: H - PB,
+            stroke: css("--accent"), "stroke-width": 1, opacity: .2 }));
+          svg.append(mk("circle", { cx: x, cy: yv, r: 3.2, fill: css("--accent"),
+            stroke: css("--surface"), "stroke-width": 1 }));
+          if (x - lastPx >= 54) {                    // never stack two price labels
+            lastPx = x;
+            const pv = mk("text", { x, y: yv - 8, "text-anchor": "middle",
+              fill: css("--accent-text"), "font-size": 10.5, "font-weight": 650 });
+            pv.textContent = money(midAt(n - 1 + h));
+            svg.append(pv);
+          }
+          if (x - lastDx >= 54) {                    // …nor run a date into the axis
+            lastDx = x;
+            const dt = mk("text", { x, y: H - 7, "text-anchor": "middle",
+              fill: css("--accent-text"), "font-size": 9.5 });
+            dt.textContent = fcDate(h);
+            svg.append(dt);
+          }
         }
       }
 
@@ -1407,36 +1581,73 @@ function chartPanel(d, ser) {
   const outlookEl = el("div", "outlook");
   outlookEl.hidden = !S.fc;
   (() => {
-    const H_BARS = { "1d": 21, "1wk": 13, "1mo": 12 }[S.tf] || 12;
-    const H_WORD = { "1d": "a month", "1wk": "a quarter", "1mo": "a year" }[S.tf] || "a year";
+    // the prediction interval belongs to the FITTED window, not the whole series
     const seH = (h) => {
-      const N = n, mx = (N - 1) / 2, Sxx = N * (N * N - 1) / 12;
+      const N = winBars, mx = (N - 1) / 2, Sxx = N * (N * N - 1) / 12;
       return dev * Math.sqrt(1 + 1 / N + Math.pow((N - 1 + h) - mx, 2) / Sxx);
     };
-    const target = midAt(n - 1 + H_BARS);
-    const band = 2 * seH(H_BARS);
-    const upPct = (target / d.price - 1) * 100;
-    const eDays2 = daysTill(ser.earn);
-    const etf2 = (S.meta.benchmarks || []).find(x => x.sym === (S.meta.sector_etf || {})[d.sector]);
+    const ms = miles();
+    const conf = fcConfidence(d, seH, ms[ms.length - 1][0]);
+    const dateLong = h => new Date(lastBarMs() + h * (DAYS_PER_BAR[S.tf] || 30.44) * 864e5)
+      .toLocaleDateString(undefined, S.tf === "1mo"
+        ? { month: "short", year: "numeric", timeZone: "UTC" }
+        : { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+
     const head = el("div", "oh");
-    head.append("Trend forecast", infoIcon(DEFS.outlook));
+    head.append("Trend forecast", infoIcon(DEFS.outlook), el("div", "spacer"));
+    const cf = el("span", "conf");
+    cf.append(el("span", "cw", "Confidence"));
+    const pipbox = el("span", "pips");
+    for (let p = 1; p <= 3; p++) pipbox.append(el("i", p <= conf.pips ? "on" : ""));
+    cf.append(pipbox, el("b", "", conf.label));
+    cf.dataset.lv = conf.label.toLowerCase();
+    attachTip(cf,
+      `How much weight this projection deserves, scored ${Math.round(conf.score * 100)} out of 100 from three things you can check: ` +
+      `how straight the trend has been (R ${fmt(Math.abs(d.r), 2)}), whether there is a full window of history ` +
+      `(${d.bars} of 100 bars), and how wide the statistical range still is at ${ms[ms.length - 1][1]} ` +
+      `(±${fmt(conf.spread * 100, 0)}% of today's price). It describes how well the channel has fitted the past — ` +
+      `it is not the probability of the forecast coming true.`);
+    head.append(cf);
+
     const p1 = el("p");
     p1.append(el("b", "", d.sym), ` is ${d.zone.toLowerCase().replace("on the", "sitting on its").replace("below lower band", "below its floor")} ` +
       `of a ${d.strength.toLowerCase()} ${d.dir.toLowerCase()} (straightness R ${fmt(d.r, 2)}), ` +
       `at ${pct(d.pos)} of its channel. It has made ${d.swings} top-to-bottom round trip${d.swings === 1 ? "" : "s"} over the window.`);
-    const p2 = el("p");
-    p2.append(`If the last ${d.bars} bars' trend simply continued, the trend line would sit near `,
-      el("b", "", money(target)),
-      ` in ${H_WORD} (${upPct >= 0 ? "+" : ""}${fmt(upPct, 1)}% from here), with the statistical range spanning `,
-      el("b", "", money(target - band)), " to ", el("b", "", money(target + band)), ".");
+
+    // the checkpoints, matching the dots on the chart
+    const grid = el("div", "fcgrid");
+    const hdr = ["By", "Trend line reaches", "Vs today's price", "95% range"];
+    for (const h2 of hdr) grid.append(el("div", "fh", h2));
+    for (const [h, word] of ms) {
+      const target = midAt(n - 1 + h), band = 2 * seH(h);
+      const mv = (target / d.price - 1) * 100;
+      const cell = el("div", "fd");
+      cell.append(el("b", "", dateLong(h)), el("span", "fsub", word + " out"));
+      grid.append(cell,
+        el("div", "fd num", money(target)),
+        el("div", "fd num" + (mv >= 0 ? " up" : " down"), (mv >= 0 ? "+" : "") + fmt(mv, 1) + "%"),
+        el("div", "fd num fsub", money(target - band) + " – " + money(target + band)));
+    }
+
+    // when price sits well off its own trend line, most of the "Vs today" number
+    // is that gap closing rather than the trend going anywhere — say so plainly
+    const gap = d.mid ? (d.price / d.mid - 1) * 100 : 0;
     const bits = [];
+    if (Math.abs(gap) >= 8) {
+      bits.push(`${d.sym} is trading ${fmt(Math.abs(gap), 0)}% ${gap < 0 ? "below" : "above"} its own trend line right now, ` +
+        `so most of the move above is that gap closing rather than the trend itself going anywhere.`);
+    }
+    const eDays2 = daysTill(ser.earn);
+    const etf2 = (S.meta.benchmarks || []).find(x => x.sym === (S.meta.sector_etf || {})[d.sector]);
     if (eDays2 != null && eDays2 >= 0) bits.push(`Earnings in ${eDays2} day${eDays2 === 1 ? "" : "s"} could move it either way.`);
     if (etf2 && etf2.sym !== d.sym) bits.push(`Its sector fund ${etf2.sym} is ${standing(etf2.pos).toLowerCase()} of its own channel.`);
     const p3 = el("p");
     p3.textContent = bits.join(" ");
     const p4 = el("p", "hint",
-      "Arithmetic from past prices — the further out, the less it means. Not a prediction of news, and not advice.");
-    outlookEl.append(head, p1, p2);
+      `Each row continues the last ${d.bars} bars' trend line to that date — the dots on the chart are the same numbers. ` +
+      `The range is a 95% prediction interval, so it widens the further out you look. ` +
+      `Arithmetic from past prices only: no news, no earnings results, not advice.`);
+    outlookEl.append(head, p1, grid);
     if (bits.length) outlookEl.append(p3);
     outlookEl.append(p4);
   })();
@@ -1757,6 +1968,7 @@ async function switchTF(tf, reopen) {
   if (!j) { $("#stamp").textContent = "No data for that timeframe yet."; return; }
   applyLatest(j);
   tfControl();
+  buildHead();          // the Chg header names the period, so it changes with the timeframe
   render();
   if (reopen) openSym(reopen);
 }
@@ -1955,6 +2167,16 @@ if (!baked()) {
   applyLatest(j);
   restoreFilters();
   tfControl();
+  colMenu();
+  // the Columns menu is a <details>; clicking anywhere else should close it
+  addEventListener("click", ev => {
+    const w = $("#colwrap");
+    if (w && w.open && !w.contains(ev.target)) w.open = false;
+  });
+  addEventListener("keydown", ev => {
+    const w = $("#colwrap");
+    if (ev.key === "Escape" && w && w.open) w.open = false;
+  });
   buildHead();
   render();
   if (location.hash.length > 1) openSym(decodeURIComponent(location.hash.slice(1)));
