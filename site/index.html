@@ -1,0 +1,1930 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LinReg Channel Scanner</title>
+<meta name="description" content="Stocks ranked by where they sit inside their linear-regression channel, on the daily, weekly and monthly timeframes. Refreshed automatically.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23d97757'/%3E%3Cpath d='M6 24L26 8' stroke='%23faf9f4' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M6 27L20 6M12 26L26 5' stroke='%23faf9f4' stroke-width='1.2' opacity='.55' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#efede3">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171613">
+<style>
+:root{
+  color-scheme: light;
+  /* Claude palette: warm cream surfaces, charcoal ink, terracotta accent.
+     Data colours keep their meaning — blue = bottom of channel, red = top,
+     green/red = candle direction. The brand lives in the chrome. */
+  --page:#efede3; --surface:#faf9f4; --surface-2:#f2f0e6;
+  --ink:#1f1e1a; --ink-2:#57544a; --muted:#7f7b6c;
+  --grid:#e4e1d4; --axis:#c6c2b0; --hair:rgba(31,30,26,.12);
+  --accent:#d97757;                 /* graphics: lines, borders, rings, fills */
+  --accent-text:#a04a28;            /* the same hue, dark enough to read as text */
+  --tag-ink:#201f1b;                /* ink on a terracotta fill */
+  --series:#d97757;                 /* the price line is the hero */
+  --band:rgba(31,30,26,.05); --wash:rgba(217,119,87,.08);
+  --up:#0a6b2d; --down:#b53229; --star:#a16207; --soon:#8a5a00;
+  --tint-lo:rgba(30,100,189,.10); --tint-hi:rgba(181,50,41,.09);
+  /* diverging scale for channel position: blue at the bottom, neutral mid, red at the top */
+  --dv-lo2:#174e97; --dv-lo1:#1e64bd; --dv-mid:#7f7b6c; --dv-hi1:#b53229; --dv-hi2:#8f2723;
+  --b2:#5646c0;                     /* events: earnings marker, plotted benchmark */
+  --serif:Georgia,'Iowan Old Style','Palatino Linotype','Book Antiqua',serif;
+  --mono:ui-monospace,'SF Mono','Cascadia Mono','Roboto Mono',Menlo,Consolas,monospace;
+  --shadow:0 1px 2px rgba(31,30,26,.06), 0 10px 28px rgba(31,30,26,.09);
+}
+@media (prefers-color-scheme: dark){
+  :root:where(:not([data-theme="light"])){
+    color-scheme: dark;
+    --page:#171613; --surface:#211f1c; --surface-2:#2a2822;
+    --ink:#f0eee6; --ink-2:#c8c4b8; --muted:#97927f;
+    --grid:#33312a; --axis:#47443a; --hair:rgba(240,238,230,.11);
+    --accent:#d97757; --accent-text:#e69373; --tag-ink:#201f1b;
+    --series:#e08b66;
+    --band:rgba(240,238,230,.055); --wash:rgba(217,119,87,.10);
+    --up:#35b558; --down:#ee7b6f; --star:#fab219; --soon:#fab219;
+    --tint-lo:rgba(106,165,240,.13); --tint-hi:rgba(238,123,111,.12);
+    --dv-lo2:#9cc3f5; --dv-lo1:#6aa5f0; --dv-mid:#97927f; --dv-hi1:#ee7b6f; --dv-hi2:#f2a29a;
+    --b2:#a99df2;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 28px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --page:#171613; --surface:#211f1c; --surface-2:#2a2822;
+  --ink:#f0eee6; --ink-2:#c8c4b8; --muted:#97927f;
+  --grid:#33312a; --axis:#47443a; --hair:rgba(240,238,230,.11);
+  --accent:#d97757; --accent-text:#e69373; --tag-ink:#201f1b;
+  --series:#e08b66;
+  --band:rgba(240,238,230,.055); --wash:rgba(217,119,87,.10);
+  --up:#35b558; --down:#ee7b6f; --star:#fab219; --soon:#fab219;
+  --tint-lo:rgba(106,165,240,.13); --tint-hi:rgba(238,123,111,.12);
+  --dv-lo2:#9cc3f5; --dv-lo1:#6aa5f0; --dv-mid:#97927f; --dv-hi1:#ee7b6f; --dv-hi2:#f2a29a;
+  --b2:#a99df2;
+  --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 28px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--page); color:var(--ink);
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent-text)}
+::selection{background:rgba(217,119,87,.28)}
+:where(button,select,input,a,[tabindex]):focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+svg text{font-variant-numeric:tabular-nums}
+.scroll::-webkit-scrollbar,.mkt::-webkit-scrollbar,.pre::-webkit-scrollbar{height:8px;width:8px}
+.scroll::-webkit-scrollbar-thumb,.pre::-webkit-scrollbar-thumb{background:var(--axis);border-radius:4px}
+.wrap{max-width:1460px;margin:0 auto;padding:22px 20px 64px}
+
+header{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+h1{font-family:var(--serif);font-size:23px;font-weight:650;line-height:1.2;margin:0;letter-spacing:0}
+.sub{color:var(--ink-2);font-size:12.5px;margin-top:3px;font-variant-numeric:tabular-nums}
+.spacer{flex:1}
+.btn{
+  background:var(--surface);color:var(--ink);border:1px solid var(--hair);
+  border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer;
+  min-height:34px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap
+}
+.btn:hover{background:var(--surface-2);border-color:var(--axis)}
+.btn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent-text)}
+.btn.fav[aria-pressed="true"]{border-color:var(--star);color:var(--star)}
+
+/* segmented control — timeframe, chart type */
+.seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--hair);border-radius:9px;padding:2px;gap:2px}
+.seg button{
+  background:none;border:0;border-radius:7px;padding:6px 13px;font:inherit;font-size:13px;
+  color:var(--ink-2);cursor:pointer;min-height:30px
+}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-selected="true"]{background:var(--surface);color:var(--accent-text);font-weight:650;box-shadow:0 1px 2px rgba(31,30,26,.10)}
+
+/* market overview strip — a slow-moving ticker of the indexes and sectors */
+.mktwrap{display:flex;align-items:center;gap:8px;padding:0 0 12px}
+.mkt{flex:1;min-width:0;overflow:hidden;position:relative;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 3%,#000 97%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 3%,#000 97%,transparent)}
+.mktrack{display:flex;gap:6px;width:max-content;animation:mscroll var(--mdur,60s) linear infinite}
+.mkt:hover .mktrack,.mkt:focus-within .mktrack{animation-play-state:paused}
+@keyframes mscroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion: reduce){
+  .mktrack{animation:none}
+  .mkt{overflow-x:auto;mask-image:none;-webkit-mask-image:none}
+}
+.mchip .mpx{font-variant-numeric:tabular-nums;font-size:12px;color:var(--ink-2)}
+.mchip{
+  display:inline-flex;align-items:center;gap:8px;white-space:nowrap;flex:0 0 auto;
+  background:var(--surface);border:1px solid var(--hair);border-left-width:3px;
+  border-radius:8px;padding:5px 11px;font:inherit;font-size:12.5px;color:var(--ink);
+  cursor:pointer;min-height:31px
+}
+.mchip[disabled]{cursor:default}
+.mlab{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto;align-self:center;
+  color:var(--muted);font-size:10.5px;font-weight:650;text-transform:uppercase;
+  letter-spacing:.08em;padding-right:4px}
+.mchip:not([disabled]):hover{background:var(--surface-2)}
+.mchip.on{box-shadow:inset 0 0 0 1px var(--accent);border-color:var(--accent)}
+.mchip b{font-weight:650;font-size:12.5px}
+.mchip .mv{font-variant-numeric:tabular-nums;font-size:12px}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.tile{background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:13px 15px;
+  font:inherit;color:var(--ink);text-align:left;display:block;width:100%}
+.tile .v{font-family:var(--serif);font-weight:600;font-size:28px;line-height:1.08;margin-bottom:4px}
+.tile .k{color:var(--ink-2);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em}
+.tile.act{cursor:pointer;position:relative}
+.tile.act::after{content:"›";position:absolute;top:9px;right:11px;color:var(--muted);
+  font-size:15px;line-height:1;opacity:.55}
+.tile.act:hover{background:var(--surface-2);border-color:var(--axis)}
+.tile.act:hover::after{opacity:1;color:var(--accent-text)}
+.tile.on{background:var(--wash);border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.tile.on::after{content:"✕";color:var(--accent-text);opacity:1;font-size:12px;top:11px}
+.tile.on .k{color:var(--accent-text)}
+.tile.fav .v{color:var(--star)}
+
+/* a filter can leave identical rows on screen — pulse the count so it registers */
+@keyframes cpulse{0%{background:var(--wash);color:var(--accent-text)}100%{background:transparent}}
+.fcount.pulse{animation:cpulse 1.1s ease-out;border-radius:6px;padding:2px 6px}
+.fcount.filtered{color:var(--accent-text);font-weight:650}
+/* highlight which dropdowns are actually doing something */
+.filters select.set{border-color:var(--accent);color:var(--accent-text);font-weight:600}
+
+.filters{
+  display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+  background:var(--surface);border:1px solid var(--hair);border-radius:12px;
+  padding:10px 12px;margin-bottom:14px;position:sticky;top:0;z-index:20
+}
+select,input[type=search]{
+  font:inherit;font-size:13px;color:var(--ink);background:var(--surface-2);
+  border:1px solid var(--hair);border-radius:8px;padding:6px 9px;min-height:34px
+}
+input[type=search]{min-width:180px}
+.fcount{color:var(--ink-2);font-size:13px;margin-left:auto;white-space:nowrap}
+.clearbtn{background:var(--surface-2);border:1px solid var(--hair);border-radius:999px;
+  padding:3px 11px;font:inherit;font-size:12px;color:var(--ink-2);cursor:pointer}
+.clearbtn:hover{color:var(--ink);border-color:var(--axis)}
+.divider{width:1px;align-self:stretch;background:var(--hair);margin:0 2px}
+
+/* overflow:clip (not hidden) — hidden would create a scroll container and the
+   sticky table header would scroll away with the card */
+.tablecard{background:var(--surface);border:1px solid var(--hair);border-radius:12px;overflow:clip}
+.scroll{overflow-x:visible}
+@media (max-width:1100px){ .scroll{overflow-x:auto} }
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 9px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--grid)}
+thead th{
+  position:sticky;top:var(--stick,58px);background:var(--surface);z-index:10;
+  font-weight:650;font-size:11px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink-2);cursor:pointer;user-select:none
+}
+thead th:hover{color:var(--ink)}
+thead th .ar{color:var(--accent-text);font-size:10px}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--wash)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.n{font-size:13px}
+.sym{font-weight:650;font-size:13px}
+.nm{color:var(--ink-2);max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.up{color:var(--up)} .down{color:var(--down)}
+.chip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;
+  background:var(--surface-2);color:var(--ink-2);border:1px solid var(--hair)}
+th.stcol,td.stcol{padding-left:4px;padding-right:4px;width:34px}
+.star{background:none;border:0;cursor:pointer;color:var(--muted);font-size:18px;
+  line-height:1;padding:4px 6px;border-radius:6px}
+.star:hover{color:var(--star);background:var(--surface-2)}
+.star[aria-pressed="true"]{color:var(--star)}
+.thin{color:var(--muted);font-size:9.5px;text-transform:uppercase;
+  letter-spacing:.08em;margin-left:5px;border:1px solid var(--hair);border-radius:4px;padding:1px 4px}
+
+.meter{position:relative;width:104px;height:16px;display:inline-block;vertical-align:-4px}
+.meter i{position:absolute;left:0;right:0;top:7px;height:2px;background:var(--grid)}
+.meter u{position:absolute;left:0;width:15%;top:3px;bottom:3px;background:var(--tint-lo)}
+.meter b{position:absolute;top:2px;bottom:2px;width:2px;background:var(--series);border-radius:1px}
+.meter s{position:absolute;top:5px;bottom:5px;width:1px;background:var(--axis)}
+
+.more{display:block;width:100%;padding:12px;background:var(--surface);border:0;
+  border-top:1px solid var(--grid);color:var(--accent-text);font:inherit;cursor:pointer}
+.more:hover{background:var(--surface-2)}
+.empty{padding:44px 20px;text-align:center;color:var(--ink-2)}
+.loading{opacity:.45;transition:opacity .15s}
+
+dialog{
+  border:1px solid var(--hair);border-radius:14px;background:var(--surface);color:var(--ink);
+  padding:0;width:min(940px,96vw);box-shadow:var(--shadow)
+}
+dialog::backdrop{background:rgba(11,11,11,.45)}
+.mhead{display:flex;align-items:flex-start;gap:10px;padding:16px 18px 10px}
+.mhead h2{margin:0;font-family:var(--serif);font-weight:650;font-size:20px;display:flex;align-items:center;gap:9px}
+.mbody{padding:0 18px 18px}
+/* twelve stats on a 6-column grid — and 12 divides evenly by 6, 4, 3 and 2, so
+   every breakpoint stays a full rectangle instead of a ragged last row */
+.kv{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:1fr;gap:8px;margin:12px 0 0}
+@media (max-width:1000px){ .kv{grid-template-columns:repeat(4,minmax(0,1fr))} }
+@media (max-width:760px){ .kv{grid-template-columns:repeat(3,minmax(0,1fr))} }
+@media (max-width:540px){ .kv{grid-template-columns:repeat(2,minmax(0,1fr))} }
+.kv > div{
+  background:var(--surface-2);border-radius:9px;padding:9px 11px;
+  border-left:2px solid transparent;display:flex;flex-direction:column;min-height:76px
+}
+.kv .k{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em}
+.kv .v{font-size:15px;font-variant-numeric:tabular-nums;line-height:1.32;margin-top:2px}
+.kv .b{color:var(--muted);font-size:11px;margin-top:auto;padding-top:4px;font-variant-numeric:tabular-nums}
+.kv .meter{width:100%;margin-top:4px}
+.kvmore{display:block;width:100%;margin:8px 0 4px;padding:6px;background:none;
+  border:1px dashed var(--hair);border-radius:9px;color:var(--muted);
+  font:inherit;font-size:12px;cursor:pointer}
+.kvmore:hover{color:var(--accent-text);border-color:var(--accent)}
+
+/* benchmark cards — the stock and the market, same metric side by side */
+.bench{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:8px}
+.bench > div{background:var(--surface-2);border-radius:9px;padding:9px 11px;
+  border-left:2px solid var(--hair)}
+.bench > div.self{border-left-color:var(--accent);background:var(--wash)}
+.bench > div.act:hover{background:var(--surface);box-shadow:inset 0 0 0 1px var(--axis)}
+.bench .t{display:flex;align-items:baseline;gap:6px}
+.bench .s{font-weight:650;font-size:13px}
+.bench .n{color:var(--ink-2);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bench .bp{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:3px}
+.bench .bsub{color:var(--muted);font-size:11px;padding-top:5px}
+.bench .meter{width:100%;margin-top:6px}
+.legend{display:flex;gap:14px;align-items:center;flex-wrap:wrap;color:var(--ink-2);font-size:12px;margin:2px 0 6px}
+.legend i{display:inline-block;width:14px;height:2px;border-radius:1px;margin-right:5px;vertical-align:middle}
+.navbtns{display:flex;gap:6px;align-items:center}
+
+/* explanation hovers — a visible ⓘ next to anything technical */
+.info{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:13px;height:13px;margin-left:5px;vertical-align:1px;flex:0 0 auto;
+  border:1px solid var(--axis);border-radius:50%;
+  font-size:9px;font-weight:650;font-style:normal;letter-spacing:0;
+  color:var(--muted);cursor:help;text-transform:none
+}
+.info:hover,.info:focus-visible{border-color:var(--accent);color:var(--accent-text)}
+.tt{
+  position:fixed;z-index:999;max-width:270px;padding:9px 11px;
+  background:var(--surface);border:1px solid var(--hair);border-radius:9px;
+  box-shadow:var(--shadow);color:var(--ink);font-size:12.5px;line-height:1.5;
+  font-weight:400;text-transform:none;letter-spacing:0;white-space:normal;
+  pointer-events:none;opacity:0;transition:opacity .08s
+}
+.tt.show{opacity:1}
+
+/* the generated trend forecast */
+.outlook{background:var(--surface-2);border-left:2px solid var(--accent);border-radius:9px;
+  padding:9px 13px;margin:2px 0 8px;font-size:12.5px;line-height:1.6;color:var(--ink-2)}
+.outlook p{margin:4px 0}
+.outlook b{color:var(--ink);font-weight:650;font-variant-numeric:tabular-nums}
+.outlook .oh{font-weight:650;color:var(--ink);font-size:12.5px}
+.outlook .hint{font-size:11.5px;color:var(--muted)}
+
+/* the "How to read this" guide */
+.guide{padding:2px 18px 18px;font-size:13.5px;line-height:1.65;color:var(--ink)}
+.guide h3{font-size:13px;margin:16px 0 4px;color:var(--ink)}
+.guide p{margin:4px 0 10px;color:var(--ink-2)}
+.guide .gdiag{background:var(--surface-2);border-radius:10px;padding:10px 12px;margin:10px 0}
+.guide b{font-weight:650;color:var(--ink)}
+
+/* chart chrome */
+.chartwrap svg.pan{cursor:grab;touch-action:none;user-select:none}
+.chartwrap.grabbing svg.pan{cursor:grabbing}
+.chartbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:4px 0 6px}
+.hint{color:var(--muted);font-size:12px}
+.btn.sm{min-height:28px;padding:3px 10px;font-size:13px;border-radius:7px}
+
+/* TradingView-style fixed readout: values live in one steady line above the
+   chart instead of a tooltip chasing the pointer */
+.readout{display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;min-height:22px;
+  margin:2px 0 3px;font-size:12.5px;color:var(--ink-2);
+  font-variant-numeric:tabular-nums}
+.readout b{color:var(--ink);font-weight:650}
+.readout .rdate{font-weight:650;color:var(--ink)}
+
+/* price + change chip beside the symbol in the chart header */
+.pchip{display:inline-flex;gap:7px;align-items:baseline;background:var(--surface-2);
+  border-radius:7px;padding:3px 10px;font-size:13.5px;font-weight:400;
+  font-variant-numeric:tabular-nums;font-style:normal}
+.pchip b{font-weight:700}
+.crow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 0 2px}
+.charttitle{font-size:13px;font-weight:600}
+.charthint{color:var(--ink-2);font-size:12px;margin-bottom:6px}
+svg{display:block;width:100%;height:auto;touch-action:none}
+.mfoot{display:flex;gap:8px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--grid);margin-top:16px}
+
+footer{color:var(--ink-2);font-size:12px;margin-top:30px;line-height:1.7;
+  border-top:1px solid var(--grid);padding-top:6px;max-width:980px}
+footer h3{color:var(--ink);font-size:11px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.09em;margin:20px 0 5px}
+code{font-family:var(--mono);background:var(--surface-2);border:1px solid var(--hair);
+  border-radius:4px;padding:1px 5px;font-size:11px}
+.pre{background:var(--surface);border:1px solid var(--hair);border-radius:8px;padding:10px;
+  font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;
+  color:var(--ink);max-height:200px;overflow:auto}
+@media (max-width:1439px){ .xw{display:none} }
+@media (max-width:1330px){ .mo{display:none} }
+@media (max-width:1160px){ .sect{display:none} }
+@media (max-width:620px){
+  .nm{display:none}
+  .wrap{padding:16px 12px 48px}
+  .filters{position:static}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div>
+    <h1>LinReg Channel Scanner</h1>
+    <div class="sub" id="stamp">Loading…</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="seg" id="tfseg" role="tablist" aria-label="Timeframe"></div>
+  <button class="btn" id="guidebtn" title="A plain-English walkthrough of every number on this page">How to read</button>
+  <button class="btn" id="csv" title="Download the rows currently shown">Export CSV</button>
+  <button class="btn" id="alertcfg" title="Set up email alerts">Alerts</button>
+  <button class="btn" id="theme" title="Switch light / dark">Theme</button>
+</header>
+
+<div class="mktwrap" id="mktwrap" hidden>
+  <span class="mlab" id="mlab"></span>
+  <div class="mkt" id="mkt" role="toolbar" aria-label="Market overview"></div>
+</div>
+
+<div class="tiles" id="tiles"></div>
+
+<div class="filters">
+  <input type="search" id="q" placeholder="Search symbol or company" aria-label="Search symbol or company">
+  <button class="btn fav" id="favbtn" aria-pressed="false" title="Show only your favorites">★ Favorites</button>
+  <div class="divider"></div>
+  <select id="uni" aria-label="Universe">
+    <option value="all">All stocks</option>
+    <option value="sp500">S&amp;P 500 only</option>
+  </select>
+  <select id="sector" aria-label="Sector"><option value="">All sectors</option></select>
+  <select id="tier" aria-label="Size">
+    <option value="">Any size</option>
+    <option>Mega cap</option><option>Large cap</option><option>Mid cap</option>
+  </select>
+  <select id="pos" aria-label="Channel position">
+    <option value="">Any position</option>
+    <option value="band">On the lower band (±5%)</option>
+    <option value="0">Below the lower band</option>
+    <option value="15">Bottom zone (≤15%)</option>
+    <option value="25">Lower quarter (≤25%)</option>
+    <option value="upband">On the upper band (±5%)</option>
+    <option value="100">Above the upper band</option>
+  </select>
+  <select id="trend" aria-label="Trend">
+    <option value="">Any trend</option>
+    <option value="up">Uptrend only</option>
+    <option value="down">Downtrend only</option>
+  </select>
+  <select id="minr" aria-label="Trend straightness" title="How straight the trend is (Pearson R)">
+    <option value="0">Any straightness</option>
+    <option value="0.5">Fairly straight (R ≥ 0.50)</option>
+    <option value="0.7">Straight (R ≥ 0.70)</option>
+    <option value="0.85">Very straight (R ≥ 0.85)</option>
+  </select>
+  <select id="signal" aria-label="Signal" title="Quick screens based on Williams %R and the earnings calendar">
+    <option value="">Any signal</option>
+    <option value="os">Oversold — stretched low</option>
+    <option value="ob">Overbought — stretched high</option>
+    <option value="e7">Earnings within 7 days</option>
+  </select>
+  <button class="btn" id="thinbtn" aria-pressed="false" title="Hide stocks without a full window of history">Full history only</button>
+  <button class="clearbtn" id="clear" hidden title="Back to the full list">✕ Clear filters</button>
+  <span class="fcount" id="count"></span>
+</div>
+
+<div class="tablecard" id="card">
+  <div class="scroll">
+    <table>
+      <thead><tr id="hrow"></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <button class="more" id="more" hidden></button>
+  <div class="empty" id="empty" hidden>Nothing matches those filters.</div>
+</div>
+
+<footer>
+  <h3>What this measures</h3>
+  A least-squares regression line is fitted to each stock's last <b id="len">100</b> bars on the
+  timeframe you pick — daily, weekly or monthly — with a channel drawn <b id="dev">2</b> standard
+  deviations of the residuals above and below it. Same construction as TradingView's
+  <i>Linear Regression Channel</i> at length 100. <b>Position in channel</b> is where the current
+  price sits between the bands: 0% is the lower band, 100% the upper, and below 0% means price has
+  broken beneath the channel. <b>Trend strength</b> is Pearson R of the fit and <b>swings</b> counts
+  how often price travelled from the top of the channel to the bottom over the window. The newest
+  bar is live, so positions move during the session.
+  <h3>Data</h3>
+  Ten years of split-adjusted daily bars per stock from Yahoo Finance, resampled into weekly and
+  monthly bars — the same aggregation your charting platform uses. Stocks without enough history for
+  a timeframe are left out of it; those under a full 100-bar window are marked
+  <span class="chip">short</span>. Spin-offs are the main place data providers disagree on adjusted
+  history, so sanity-check anything surprising against your own chart.
+  <h3>Keyboard</h3>
+  <code>/</code> search &nbsp;·&nbsp; <code>1</code> <code>2</code> <code>3</code> daily / weekly / monthly
+  &nbsp;·&nbsp; with a chart open: <code>←</code> <code>→</code> previous / next stock,
+  <code>f</code> favorite, <code>c</code> candles / line, <code>Esc</code> close
+  <h3>Not investment advice</h3>
+  A mechanical indicator snapshot for research. It says nothing about whether a business is cheap,
+  sound, or worth owning.
+</footer>
+</div>
+
+<dialog id="dlg"><div id="dlgc"></div></dialog>
+<dialog id="gdlg"><div id="gdlgc"></div></dialog>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const el = (t, cls, txt) => { const n = document.createElement(t); if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; };
+const fmt = (v, d = 2) => v == null || !isFinite(v) ? "—" : v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const pct = v => v == null ? "—" : fmt(v, 1) + "%";
+const money = v => v == null ? "—" : "$" + fmt(v, 2);
+
+/* ---------------------------------------------------------------- persistence */
+const store = {
+  get(k, dflt) { try { const v = localStorage.getItem(k); return v == null ? dflt : JSON.parse(v); } catch (e) { return this.mem[k] ?? dflt; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { this.mem[k] = v; } },
+  mem: {},
+};
+
+const S = {
+  tf: null, tfs: [], meta: null, rows: [],
+  cacheLatest: {}, cacheSeries: {},
+  view: [], sort: { key: "pos", dir: 1 }, shown: 0, PAGE: 150,
+  fav: new Set(store.get("linreg.fav", [])),
+  chart: store.get("linreg.chart", "candle"),
+  kvx: store.get("linreg.kvx", false),
+  fc: store.get("linreg.fc", false),
+};
+const saveFav = () => store.set("linreg.fav", [...S.fav]);
+
+const savedTheme = store.get("linreg.theme", null);
+if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+$("#theme").onclick = () => {
+  const cur = document.documentElement.dataset.theme ||
+    (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  store.set("linreg.theme", next);
+  if ($("#dlg").open && $("#dlg").dataset.sym) openSym($("#dlg").dataset.sym);
+};
+
+/* ---------------------------------------------------------------- data loading */
+const baked = () => window.__DATA__ || null;
+const getJSON = path => {
+  const b = baked();
+  if (b) return Promise.resolve(b[path] ?? null);
+  return fetch("data/" + path + ".json?" + Date.now()).then(r => r.ok ? r.json() : null).catch(() => null);
+};
+
+async function latest(tf) {
+  if (!S.cacheLatest[tf]) S.cacheLatest[tf] = await getJSON("latest-" + tf);
+  return S.cacheLatest[tf];
+}
+async function seriesFor(tf, sym) {
+  const ch = sym[0].toUpperCase();
+  const b = ch >= "A" && ch <= "Z" ? ch : "_";
+  const key = tf + "/" + b;
+  if (!(key in S.cacheSeries)) S.cacheSeries[key] = await getJSON("series/" + key);
+  return (S.cacheSeries[key] || {})[sym] || null;
+}
+
+const DEFS = {
+  price: "The stock's last price when the scan ran, and how far it sits below its highest point of the past year.",
+  pos: "The main number here. Where the price sits inside its own trend channel: 0% means right on the floor, 100% right on the ceiling. Negative means it has fallen through the floor — the situation this scanner hunts for.",
+  trend: "The direction of the trend line drawn through the last 100 bars — rising or falling.",
+  swings: "How many times the price has travelled from the top of its channel all the way down to the bottom. More round trips mean the channel has actually been respected, so “at the floor” has meant something historically.",
+  earn: "Days until the company's next scheduled earnings report. Prices often jump on earnings day, so a nearby date adds risk to any setup.",
+  lower: "The floor of the trend channel — the trend line minus two typical wobbles (2σ). Dips have historically paused around here.",
+  upper: "The ceiling of the trend channel — the trend line plus two typical wobbles (2σ).",
+  mid: "The straight trend line drawn through the last 100 closing prices — the middle of the channel.",
+  r: "How straight the trend is, from −1 to 1. Close to 1 = a clean rising line, close to −1 = a clean falling line, near 0 = no real trend.",
+  strength: "Pearson R put into words — from “very strong” (a clean straight trend) down to “choppy” (no real trend).",
+  wr: "Williams %R: where today's close sits inside the last 14 bars' high–low range. 0 = top of that range, −100 = bottom. Below −80 is commonly read as oversold, above −20 as overbought.",
+  delta: "How much the channel position moved since the previous scan — is it still falling toward the floor, or lifting off it?",
+  cap: "The total value of all the company's shares.",
+  bars: "How many price bars the channel is built on. A full window is 100; fewer makes the channel a thinner read.",
+  chg: "Price change over the current bar — today on the daily view, this week on weekly, this month on monthly.",
+  rank: "Rank 1 = the stock sitting lowest in its channel across the whole scan.",
+  bench: "The same channel math applied to the market itself, so you can tell whether a cheap-looking stock is uniquely weak or the whole market is down.",
+  mkt: "Where each index and sector sits inside its own trend channel — a blue edge means near its floor, red above its ceiling — plus its move this bar. Sectors are ordered weakest first. Click any chip to open its chart.",
+  outlook: "Not a crystal ball. The dashed line simply continues the fitted trend at its current slope, and the shaded cone is the statistical range around that continuation (a 95% prediction interval, which widens the further out you look). The text is generated from the numbers on this page. None of it knows about news, earnings results, or anything outside past prices.",
+  method: "Every stock gets a straight trend line fitted through its last 100 bars, with a channel drawn two typical wobbles (2σ) above and below — the same construction as TradingView's Linear Regression Channel. The table ranks stocks by where price sits inside that channel, lowest first. It refreshes itself three times each trading day.",
+};
+
+/* ------------------------------------------------------------------ the table */
+const COLS = [
+  { k: "rank",   t: "#",      n: true, def: DEFS.rank },
+  { k: "_star",  t: "★",      nosort: true, cls: "stcol" },
+  { k: "sym",    t: "Symbol" },
+  { k: "name",   t: "Company", cls: "nm" },
+  { k: "sector", t: "Sector",  cls: "sect" },
+  { k: "price",  t: "Price",  n: true },
+  { k: "chg",    t: "Chg",    n: true, def: DEFS.chg },
+  { k: "lower",  t: "Lower",  n: true, cls: "mo", def: DEFS.lower },
+  { k: "upper",  t: "Upper",  n: true, cls: "mo", def: DEFS.upper },
+  { k: "pos",    t: "Position in channel", def: DEFS.pos },
+  { k: "_d",     t: "Δ",      n: true, sortk: "_delta", def: DEFS.delta },
+  { k: "dir",    t: "Trend",  def: DEFS.trend },
+  { k: "r",      t: "R",      n: true, def: DEFS.r },
+  { k: "swings", t: "Swings", n: true, cls: "xw", def: DEFS.swings },
+];
+
+function buildHead() {
+  const tr = $("#hrow");
+  tr.textContent = "";
+  for (const c of COLS) {
+    const th = el("th", (c.n ? "n " : "") + (c.cls || ""));
+    th.append(c.t);
+    const key = c.sortk || c.k;
+    if (c.nosort) { th.style.cursor = "default"; th.title = "Favorites"; }
+    else {
+      attachTip(th, c.def ? c.def + " Click to sort." : "Sort by " + c.t);
+      if (S.sort.key === key) th.append(" ", el("span", "ar", S.sort.dir > 0 ? "▲" : "▼"));
+      th.onclick = () => {
+        S.sort = S.sort.key === key ? { key, dir: -S.sort.dir }
+                                    : { key, dir: key === "pos" || key === "rank" ? 1 : -1 };
+        buildHead(); render();
+      };
+    }
+    tr.append(th);
+  }
+}
+
+/* One diverging scale for channel position, used by the table, the stat tiles and
+   the benchmark strip: deep blue at/below the lower band, neutral mid-channel,
+   red at/above the upper band. Never the only cue — the zone is always spelled out. */
+/* Within this many points of a band counts as sitting on it — matches ON_BAND
+   in scan.py, which produces the matching zone names. */
+const ON_BAND = 5;
+
+/* Plain-language stand-ins for "% of channel", which reads as jargon on a
+   benchmark card. The exact figure stays available in the card's tooltip. */
+function standing(p) {
+  if (p < -ON_BAND) return "Below its floor";
+  if (p <= ON_BAND) return "Sitting on its floor";
+  if (p <= 15) return "Just above its floor";
+  if (p <= 35) return "In the lower part";
+  if (p <= 65) return "Around its trend line";
+  if (p <= 85) return "In the upper part";
+  if (p < 100 - ON_BAND) return "Near its ceiling";
+  if (p <= 100 + ON_BAND) return "Sitting on its ceiling";
+  return "Above its ceiling";
+}
+
+/* Whole days from today to an ISO date, both pinned to UTC midnight so the
+   answer doesn't wobble with the reader's clock. */
+function daysTill(iso) {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (isNaN(t)) return null;
+  return Math.round((t - Date.parse(new Date().toISOString().slice(0, 10))) / 864e5);
+}
+
+function earningsWords(n) {
+  if (n == null) return ["—", "no date published"];
+  if (n < 0) return ["passed", "reported " + -n + (n === -1 ? " day" : " days") + " ago"];
+  if (n === 0) return ["today", "reporting today"];
+  if (n === 1) return ["1", "tomorrow"];
+  return [String(n), "days away"];
+}
+
+function zoneColor(pos) {
+  if (pos < -ON_BAND) return "var(--dv-lo2)";
+  if (pos <= 15) return "var(--dv-lo1)";
+  if (pos > 100 + ON_BAND) return "var(--dv-hi2)";
+  if (pos >= 85) return "var(--dv-hi1)";
+  return "var(--ink)";
+}
+
+function meter(pos) {
+  const m = el("div", "meter");
+  m.append(el("u"), el("i"));
+  const mid = el("s"); mid.style.left = "50%"; m.append(mid);
+  const b = el("b");
+  b.style.background = pos < 0 || pos > 100 || pos <= 15 || pos >= 85 ? zoneColor(pos) : "var(--series)";
+  b.style.left = pos > 100 ? "calc(100% - 2px)" : Math.max(0, Math.min(100, pos)) + "%";
+  m.append(b);
+  return m;
+}
+
+function starButton(sym, big) {
+  const on = S.fav.has(sym);
+  const b = el("button", "star", on ? "★" : "☆");
+  b.setAttribute("aria-pressed", on);
+  b.setAttribute("aria-label", (on ? "Remove " : "Add ") + sym + (on ? " from" : " to") + " favorites");
+  b.title = on ? "Remove from favorites" : "Add to favorites";
+  if (big) b.style.fontSize = "22px";
+  b.onclick = ev => {
+    ev.stopPropagation();
+    S.fav.has(sym) ? S.fav.delete(sym) : S.fav.add(sym);
+    saveFav();
+    const now = S.fav.has(sym);
+    b.textContent = now ? "★" : "☆";
+    b.setAttribute("aria-pressed", now);
+    b.title = now ? "Remove from favorites" : "Add to favorites";
+    tiles();
+    if ($("#favbtn").getAttribute("aria-pressed") === "true") render();
+    document.querySelectorAll("tbody .star").forEach(o => {
+      if (o !== b && o.dataset.sym === sym) { o.textContent = now ? "★" : "☆"; o.setAttribute("aria-pressed", now); }
+    });
+  };
+  b.dataset.sym = sym;
+  return b;
+}
+
+function row(d) {
+  const tr = el("tr");
+  tr.tabIndex = 0;
+  tr.onclick = e => { if (!e.target.closest(".star")) openSym(d.sym); };
+  tr.onkeydown = e => { if (e.key === "Enter") openSym(d.sym); };
+
+  for (const c of COLS) {
+    const td = el("td", (c.n ? "n " : "") + (c.cls || ""));
+    if (c.k === "_star") td.append(starButton(d.sym));
+    else if (c.k === "sym") {
+      td.append(el("span", "sym", d.sym));
+      if (d.thin) td.append(el("span", "thin", "short"));
+    } else if (c.k === "pos") {
+      const v = el("span", "", pct(d.pos));
+      v.style.cssText = "display:inline-block;width:56px;font-variant-numeric:tabular-nums";
+      v.style.color = zoneColor(d.pos);
+      td.title = d.zone;
+      td.append(v, meter(d.pos));
+    } else if (c.k === "_d") {
+      const dl = d.prev == null ? null : d.pos - d.prev;
+      td.textContent = dl == null ? "—" : (dl > 0 ? "+" : "") + fmt(dl, 1);
+      td.title = d.prev == null ? "" : "Previous reading " + pct(d.prev);
+      if (dl != null) td.style.color = dl < 0 ? "var(--ink)" : "var(--muted)";
+    } else if (c.k === "dir") {
+      const up = d.dir === "Uptrend";
+      td.append(el("span", up ? "up" : "down", (up ? "▲ " : "▼ ") + d.dir));
+    } else if (c.k === "chg") {
+      td.textContent = d.chg == null ? "—" : (d.chg > 0 ? "+" : "") + fmt(d.chg, 2) + "%";
+      if (d.chg != null) td.style.color = d.chg >= 0 ? "var(--up)" : "var(--down)";
+      td.title = "Change over the last " + (S.meta ? S.meta.timeframe_name.toLowerCase() : "") + " bar";
+    } else if (["price", "lower", "upper"].includes(c.k)) td.textContent = money(d[c.k]);
+    else if (c.k === "r") { td.textContent = fmt(d.r, 3); td.title = d.strength; }
+    else td.textContent = d[c.k];
+    tr.append(td);
+  }
+  return tr;
+}
+
+function currentFilters() {
+  const q = $("#q").value.trim().toLowerCase();
+  const fav = $("#favbtn").getAttribute("aria-pressed") === "true";
+  const uni = $("#uni").value, sec = $("#sector").value, tier = $("#tier").value;
+  const p = $("#pos").value, tr = $("#trend").value, mr = +$("#minr").value;
+  const sig = $("#signal").value;
+  const full = $("#thinbtn").getAttribute("aria-pressed") === "true";
+  return d => {
+    if (sig === "os" && !(d.wr != null && d.wr <= -80)) return false;
+    if (sig === "ob" && !(d.wr != null && d.wr >= -20)) return false;
+    if (sig === "e7") { const nd = daysTill(d.earn); if (nd == null || nd < 0 || nd > 7) return false; }
+    if (q && !(d.sym.toLowerCase().includes(q) || d.name.toLowerCase().includes(q))) return false;
+    if (fav && !S.fav.has(d.sym)) return false;
+    if (uni === "sp500" && !d.sp500) return false;
+    if (sec && d.sector !== sec) return false;
+    if (tier && d.tier !== tier) return false;
+    if (p === "band" && !(d.pos >= -ON_BAND && d.pos <= ON_BAND)) return false;
+    if (p === "upband" && !(d.pos >= 100 - ON_BAND && d.pos <= 100 + ON_BAND)) return false;
+    if (p === "0" && !(d.pos < 0)) return false;
+    if (p === "15" && !(d.pos <= 15)) return false;
+    if (p === "25" && !(d.pos <= 25)) return false;
+    if (p === "100" && !(d.pos > 100)) return false;
+    if (tr === "up" && d.dir !== "Uptrend") return false;
+    if (tr === "down" && d.dir !== "Downtrend") return false;
+    if (mr && Math.abs(d.r) < mr) return false;
+    if (full && d.thin) return false;
+    return true;
+  };
+}
+
+/* ---- filter persistence + the clear affordance ---- */
+const FILTER_IDS = ["uni", "sector", "tier", "pos", "trend", "minr", "signal"];
+const FILTER_DEFAULTS = { uni: "all", sector: "", tier: "", pos: "", trend: "", minr: "0", signal: "" };
+
+function filtersActive() {
+  return $("#q").value.trim() !== "" ||
+    FILTER_IDS.some(id => $("#" + id).value !== FILTER_DEFAULTS[id]) ||
+    $("#thinbtn").getAttribute("aria-pressed") === "true" ||
+    $("#favbtn").getAttribute("aria-pressed") === "true";
+}
+function saveFilters() {
+  store.set("linreg.filters", {
+    sel: Object.fromEntries(FILTER_IDS.map(id => [id, $("#" + id).value])),
+    thin: $("#thinbtn").getAttribute("aria-pressed") === "true",
+    fav: $("#favbtn").getAttribute("aria-pressed") === "true",
+    sort: S.sort,
+  });
+}
+function restoreFilters() {
+  const f = store.get("linreg.filters", null);
+  if (!f) return;
+  for (const id of FILTER_IDS) {
+    const box = $("#" + id), want = f.sel && f.sel[id];
+    if (want == null) continue;
+    box.value = want;
+    if (box.value !== want) box.value = FILTER_DEFAULTS[id];   // option gone (e.g. sector)
+  }
+  $("#thinbtn").setAttribute("aria-pressed", String(!!f.thin));
+  $("#favbtn").setAttribute("aria-pressed", String(!!f.fav));
+  if (f.sort && f.sort.key) S.sort = f.sort;
+}
+$("#clear").onclick = () => {
+  reset();
+  $("#thinbtn").setAttribute("aria-pressed", "false");
+  document.querySelectorAll(".tile").forEach(t => t.classList.remove("on"));
+  render();
+  flash();
+};
+
+function render() {
+  S.view = S.rows.filter(currentFilters());
+  const k = S.sort.key, dir = S.sort.dir;
+  const val = (o) => k === "_delta" ? (o.prev == null ? Infinity : o.pos - o.prev) : o[k];
+  S.view.sort((a, b) => {
+    const va = val(a), vb = val(b);
+    if (typeof va === "string") return dir * va.localeCompare(vb);
+    return dir * ((va ?? 0) - (vb ?? 0));
+  });
+  S.shown = 0;
+  $("#tbody").textContent = "";
+  $("#empty").hidden = S.view.length > 0;
+  const on = filtersActive();
+  $("#count").textContent = S.view.length.toLocaleString() + " of " + S.rows.length.toLocaleString() + " stocks";
+  $("#count").classList.toggle("filtered", on);
+  $("#clear").hidden = !on;
+  for (const id of FILTER_IDS) $("#" + id).classList.toggle("set", $("#" + id).value !== FILTER_DEFAULTS[id]);
+  syncMkt();
+  saveFilters();
+  page();
+}
+
+function page() {
+  const frag = document.createDocumentFragment();
+  const end = Math.min(S.shown + S.PAGE, S.view.length);
+  for (let i = S.shown; i < end; i++) frag.append(row(S.view[i]));
+  $("#tbody").append(frag);
+  S.shown = end;
+  const left = S.view.length - S.shown;
+  $("#more").hidden = left <= 0;
+  $("#more").textContent = left > 0 ? "Show " + Math.min(left, S.PAGE) + " more (" + left.toLocaleString() + " left)" : "";
+}
+$("#more").onclick = page;
+
+/* ------------------------------------------------------------------- the tiles */
+function tiles() {
+  const st = S.meta.stats, box = $("#tiles"), tf = S.meta.timeframe_name.toLowerCase();
+  box.textContent = "";
+  const items = [
+    ["On the lower band", st.band ?? "—", { pos: "band" },
+      "Stocks sitting within 5% either side of their channel floor — right on the line where dips have historically paused. Click to show only them."],
+    ["Below the lower band", st.below, { pos: "0" },
+      "Stocks that have fallen through their channel floor entirely. Click to show only them."],
+    ["In the bottom zone", st.bottom, { pos: "15" },
+      "Stocks in the lowest 15% of their channel. Click to show only them."],
+    ["Pullback in an uptrend", st.dip, { pos: "25", trend: "up", minr: "0.7" },
+      "Stocks in a clean rising channel that have dipped into its lower quarter — the classic buy-the-dip setup. Click to show only them."],
+    ["Median position", pct(st.median), null,
+      "The middle of the whole market: half of all stocks sit lower in their own channel than this, half higher."],
+    ["★ Favorites", S.fav.size, { fav: true },
+      "Stocks you starred, saved in this browser. Click to show only them."],
+  ];
+  items.forEach(([k, v, f, hint], i) => {
+    const t = el(f ? "button" : "div", "tile" + (f ? " act" : "") + (i === 5 ? " fav" : ""));
+    const kEl = el("div", "k", k);
+    kEl.append(infoIcon(hint));
+    t.append(el("div", "v", String(v)), kEl);
+    if (f) t.onclick = () => {
+      const already = t.classList.contains("on");
+      reset();
+      document.querySelectorAll(".tile").forEach(x => x.classList.remove("on"));
+      if (!already) {                       // clicking the active tile clears it
+        if (f.fav) $("#favbtn").setAttribute("aria-pressed", "true");
+        for (const [id, val2] of Object.entries(f)) if (id !== "fav") $("#" + id).value = val2;
+        t.classList.add("on");
+      }
+      render();
+      flash();
+    };
+    box.append(t);
+  });
+}
+
+/* A filter can leave the visible rows looking identical (the table is sorted by
+   channel position, so "bottom zone" keeps the same names on top). Pulse the
+   count so it is never ambiguous that something happened. */
+function flash() {
+  const c = $("#count");
+  c.classList.remove("pulse");
+  void c.offsetWidth;
+  c.classList.add("pulse");
+}
+function reset() {
+  $("#q").value = ""; $("#uni").value = "all"; $("#sector").value = "";
+  $("#tier").value = ""; $("#pos").value = ""; $("#trend").value = ""; $("#minr").value = "0";
+  $("#signal").value = "";
+  $("#favbtn").setAttribute("aria-pressed", "false");
+}
+
+/* ------------------------------------------------------- market overview strip */
+const SECTOR_SHORT = {
+  "Information Technology": "Tech", "Health Care": "Health", "Financials": "Financials",
+  "Consumer Discretionary": "Discretionary", "Consumer Staples": "Staples", "Energy": "Energy",
+  "Industrials": "Industrials", "Materials": "Materials", "Real Estate": "Real Estate",
+  "Utilities": "Utilities", "Communication Services": "Comms",
+};
+const CHG_WORD = { "1d": "today", "1wk": "this week", "1mo": "this month" };
+const railColor = p => (p < 0 || p <= 15 || p >= 85) ? zoneColor(p) : "var(--axis)";
+
+function mkChip(b) {
+  const chip = el("button", "mchip");
+  chip.style.borderLeftColor = railColor(b.pos);
+  const label = b.kind === "index" ? b.sym : (SECTOR_SHORT[b.sector] || b.sector);
+  chip.append(el("b", "", label));
+  chip.append(el("span", "mpx", money(b.price)));
+  const up = (b.chg ?? 0) >= 0;
+  chip.append(el("span", "mv " + (up ? "up" : "down"),
+    (up ? "▲" : "▼") + (b.chg == null ? "" : fmt(Math.abs(b.chg), 1) + "%")));
+  chip.title = `${b.name} · ${standing(b.pos).toLowerCase()} (${pct(b.pos)} of its own channel)` +
+    (b.chg == null ? "" : ` · ${up ? "up" : "down"} ${fmt(Math.abs(b.chg), 1)}% ${CHG_WORD[S.tf] || ""}`) +
+    " · click for its chart";
+  if (b.kind === "sector") chip.dataset.sector = b.sector;
+  chip.onclick = () => openSym(b.sym);
+  return chip;
+}
+
+function renderMkt() {
+  const wrap = $("#mktwrap"), box = $("#mkt");
+  box.textContent = "";
+  const bs = (S.meta && S.meta.benchmarks) || [];
+  if (!bs.length) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+  const lab = $("#mlab");
+  if (!lab.dataset.built) {
+    lab.dataset.built = "1";
+    lab.append("Market", infoIcon(DEFS.mkt));
+  }
+  const idx = bs.filter(b => b.kind === "index");
+  const sec = bs.filter(b => b.kind === "sector").sort((a, b) => a.pos - b.pos);
+  const all = [...idx, ...sec];
+  const track = el("div", "mktrack");
+  for (const b of all) track.append(mkChip(b));
+  // a second copy makes the loop seamless; hidden from screen readers
+  const clone = el("div", "mktrack");
+  clone.setAttribute("aria-hidden", "true");
+  clone.style.display = "contents";
+  for (const b of all) { const c = mkChip(b); c.tabIndex = -1; clone.append(c); }
+  track.append(clone);
+  box.append(track);
+  requestAnimationFrame(() => {
+    const w = track.scrollWidth / 2;
+    track.style.setProperty("--mdur", Math.max(28, Math.round(w / 34)) + "s");
+    track.style.animationDuration = Math.max(28, Math.round(w / 34)) + "s";
+  });
+  syncMkt();
+}
+function syncMkt() {
+  const cur = $("#sector").value;
+  document.querySelectorAll(".mchip[data-sector]").forEach(c =>
+    c.classList.toggle("on", !!cur && c.dataset.sector === cur));
+}
+
+/* ---------------------------------------------------------------- chart basics */
+const NS = "http://www.w3.org/2000/svg";
+const mk = (t, a) => { const n = document.createElementNS(NS, t); for (const k in a) n.setAttribute(k, a[k]); return n; };
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+/* ------------------------------------------------ explanation hovers (ⓘ) */
+/* One floating tooltip, re-parented into whichever <dialog> is open so it is
+   never painted under a top-layer backdrop. Shows on hover AND focus. */
+const _tt = el("div", "tt");
+function _ttHost() {
+  const g = $("#gdlg"), d = $("#dlg");
+  return (g && g.open) ? g : (d && d.open) ? d : document.body;
+}
+function attachTip(node, text) {
+  if (!text) return node;
+  node.setAttribute("aria-label", text);
+  node.removeAttribute("title");
+  const show = () => {
+    _ttHost().append(_tt);
+    _tt.textContent = text;
+    _tt.classList.add("show");
+    const r = node.getBoundingClientRect();
+    _tt.style.left = "0px"; _tt.style.top = "0px";     // reset before measuring
+    const w = Math.min(270, _tt.offsetWidth || 270);
+    let x = r.left + r.width / 2 - w / 2;
+    x = Math.max(8, Math.min(innerWidth - w - 8, x));
+    let y = r.bottom + 8;
+    const h = _tt.offsetHeight || 60;
+    if (y + h > innerHeight - 8) y = r.top - h - 8;
+    _tt.style.left = x + "px"; _tt.style.top = Math.max(8, y) + "px";
+  };
+  const hide = () => _tt.classList.remove("show");
+  node.addEventListener("mouseenter", show);
+  node.addEventListener("mouseleave", hide);
+  node.addEventListener("focus", show);
+  node.addEventListener("blur", hide);
+  return node;
+}
+function infoIcon(text) {
+  const i = el("span", "info", "i");
+  i.tabIndex = 0;
+  i.setAttribute("role", "note");
+  return attachTip(i, text);
+}
+
+const fmtCap = v => !v ? "—"
+  : v >= 1e12 ? "$" + fmt(v / 1e12, 2) + "T"
+  : v >= 1e9 ? "$" + fmt(v / 1e9, 1) + "B"
+  : "$" + fmt(v / 1e6, 0) + "M";
+
+/* Plain-English definitions, shown by the ⓘ hovers. Written for someone who has
+   never seen a regression channel. */
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function longDate(iso) {
+  const [y, m, d] = iso.split("-");
+  return MONTHS[+m - 1] + " " + +d + ", " + y;
+}
+function barLabel(t) {
+  if (t.length === 7) { const [y, m] = t.split("-"); return MONTHS[+m - 1] + " " + y; }
+  const [y, m, d] = t.split("-");
+  return MONTHS[+m - 1] + " " + +d + ", " + y;
+}
+
+/* ============================================================== the chart panel
+   One component owns both stacked panels — price with its regression channel,
+   and Williams %R below it — because they share an x window that the reader can
+   pan and zoom. Redrawing from scratch on each interaction is cheap at this
+   size and keeps the state in exactly one place. */
+
+const PAD_FRAC = 0.15;      // empty room kept to the right of the newest bar
+const MIN_BARS = 15;        // hardest zoom-in
+
+function chartPanel(d, ser) {
+  const n = ser.c.length;
+  let i0 = 0, i1 = n - 1;                       // visible bar range, inclusive
+  const host = el("div");
+  const priceHost = el("div"), wrHost = el("div");
+  const readout = el("div", "readout");
+  let cross = null;                             // bar index under the pointer, or null
+
+  const pad = () => Math.max(4, Math.round((i1 - i0 + 1) * (S.fc ? 0.27 : PAD_FRAC)));
+  const span = () => (i1 + pad()) - i0;         // x domain width, in bars
+  const dev = (d.upper - d.lower) / 4;
+  const midAt = i => d.mid - d.slope * (n - 1 - i);
+
+  /* ---- where the next earnings report lands, in bar space ---- */
+  const barsPerDay = { "1d": 1 / 1.45, "1wk": 1 / 7, "1mo": 1 / 30.44 }[S.tf] || 1 / 30.44;
+  let earnAt = null;
+  const earnDays = daysTill(ser.earn);        // same number the stat box shows
+  if (ser.earn) {
+    const last = ser.t[n - 1].length === 7 ? ser.t[n - 1] + "-15" : ser.t[n - 1];
+    const fromLastBar = Math.round((Date.parse(ser.earn) - Date.parse(last)) / 864e5);
+    if (fromLastBar > 0) earnAt = (n - 1) + fromLastBar * barsPerDay;
+  }
+
+  /* ---- geometry helpers shared by both panels ---- */
+  const W = 880, PL = 16, PR = 74;
+  const plotW = W - PL - PR;
+  const X = i => PL + (i - i0) / span() * plotW;
+  const barAt = px => i0 + (px - PL) / plotW * span();
+  const step = () => plotW / (span() + 1);
+
+  function priceSVG() {
+    const H = 330, PT = 14, PB = 24;
+    const lo = i => midAt(i) - 2 * dev, hi = i => midAt(i) + 2 * dev;
+    const candles = S.chart === "candle";
+    const a = Math.max(0, Math.floor(i0)), b = Math.min(n - 1, Math.ceil(i1));
+
+    // prediction-interval half-width h bars past the last close: the standard
+    // linear-regression formula, so the cone widens honestly with distance
+    const seAt = h => {
+      const N = n, mx = (N - 1) / 2, Sxx = N * (N * N - 1) / 12;
+      return dev * Math.sqrt(1 + 1 / N + Math.pow((N - 1 + h) - mx, 2) / Sxx);
+    };
+    const coneEnd = () => (i1 + pad()) - (n - 1);      // horizon in bars, may be ≤0
+
+    let min = Infinity, max = -Infinity;
+    for (let i = a; i <= b; i++) {
+      min = Math.min(min, candles ? ser.l[i] : ser.c[i]);
+      max = Math.max(max, candles ? ser.h[i] : ser.c[i]);
+    }
+    for (const i of [i0, i1 + pad()]) { min = Math.min(min, lo(i)); max = Math.max(max, hi(i)); }
+    if (S.fc && b === n - 1 && coneEnd() > 0) {
+      const hE = coneEnd(), m2 = midAt(n - 1 + hE), s2 = 2 * seAt(hE);
+      min = Math.min(min, m2 - s2); max = Math.max(max, m2 + s2);
+    }
+    const padY = (max - min) * 0.07 || 1; min -= padY; max += padY;
+    const Y = v => PT + (1 - (v - min) / (max - min)) * (H - PT - PB);
+
+    const svg = mk("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", class: "pan",
+      "aria-label": `${d.sym} ${S.meta.timeframe_name.toLowerCase()} price with its ${S.meta.length}-bar regression channel` });
+
+    for (let g = 0; g <= 4; g++) {
+      const y = PT + g / 4 * (H - PT - PB);
+      svg.append(mk("line", { x1: PL, x2: W - PR, y1: y, y2: y, stroke: css("--grid"), "stroke-width": 1 }));
+      const t = mk("text", { x: W - PR + 6, y: y + 4, fill: css("--muted"), "font-size": 11 });
+      t.textContent = "$" + fmt(max - g / 4 * (max - min), max - min > 40 ? 0 : 2);
+      svg.append(t);
+    }
+
+    // the channel: filled body over real bars, lighter over the projection
+    const xr = X(n - 1), xEnd = X(i1 + pad()), xs = X(i0);
+    const poly = (x1, x2, o) => mk("path", {
+      d: `M${x1},${Y(hi(barAt(x1)))} L${x2},${Y(hi(barAt(x2)))} L${x2},${Y(lo(barAt(x2)))} L${x1},${Y(lo(barAt(x1)))} Z`,
+      fill: css("--band"), opacity: o });
+    svg.append(poly(xs, Math.min(xr, xEnd), 1));
+    if (xEnd > xr) svg.append(poly(xr, xEnd, .45));
+
+    // bands as real reference lines, labelled at the right edge on a surface
+    // backing so they stay readable over the projection and the earnings rule
+    const labels = [];
+    for (const [f, colour, label] of [[hi, "--dv-hi1", "Upper"], [lo, "--dv-lo1", "Lower"]]) {
+      svg.append(mk("line", { x1: xs, x2: xEnd, y1: Y(f(i0)), y2: Y(f(i1 + pad())),
+        stroke: css(colour), "stroke-width": 2, "stroke-linecap": "round" }));
+      labels.push([label === "Upper" ? d.upper : d.lower, colour, label, Y(f(i1 + pad()))]);
+    }
+    svg.append(mk("line", { x1: xs, x2: xEnd, y1: Y(midAt(i0)), y2: Y(midAt(i1 + pad())),
+      stroke: css("--muted"), "stroke-width": 1 }));
+
+    // price
+    const bw = Math.max(1.5, Math.min(14, step() - 2));
+    if (candles) {
+      const up = css("--up"), down = css("--down");
+      for (let i = a; i <= b; i++) {
+        const col = ser.c[i] >= ser.o[i] ? up : down;
+        const x = X(i);
+        svg.append(mk("line", { x1: x, x2: x, y1: Y(ser.h[i]), y2: Y(ser.l[i]), stroke: col, "stroke-width": 1 }));
+        const top = Y(Math.max(ser.o[i], ser.c[i])), bot = Y(Math.min(ser.o[i], ser.c[i]));
+        svg.append(mk("rect", { x: x - bw / 2, y: top, width: bw, height: Math.max(1, bot - top),
+          fill: col, rx: Math.min(1.5, bw / 3) }));
+      }
+    } else {
+      let path = "";
+      for (let i = a; i <= b; i++) path += (i === a ? "M" : "L") + X(i) + "," + Y(ser.c[i]);
+      svg.append(mk("path", { d: path, fill: "none", stroke: css("--series"), "stroke-width": 2,
+        "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    }
+    if (b === n - 1) {
+      svg.append(mk("circle", { cx: X(n - 1), cy: Y(ser.c[n - 1]), r: 4.5, fill: css("--series"),
+        stroke: css("--surface"), "stroke-width": 2 }));
+      // last price rule out into the projection space
+      svg.append(mk("line", { x1: X(n - 1), x2: xEnd, y1: Y(ser.c[n - 1]), y2: Y(ser.c[n - 1]),
+        stroke: css("--series"), "stroke-width": 1, opacity: .45 }));
+    }
+
+    // ex-dividend markers along the base
+    const yDiv = H - PB - 4;
+    for (const [date, amt] of ser.div || []) {
+      const i = ser.t.indexOf(date.length === 10 && ser.t[0].length === 7 ? date.slice(0, 7) : date);
+      const j = i >= 0 ? i : nearestBar(date);
+      if (j == null || j < i0 || j > i1) continue;
+      const x = X(j);
+      const m = mk("path", { d: `M${x},${yDiv - 4} L${x + 4},${yDiv} L${x},${yDiv + 4} L${x - 4},${yDiv} Z`,
+        fill: css("--star"), stroke: css("--surface"), "stroke-width": 1 });
+      const ttl = mk("title"); ttl.textContent = `Ex-dividend ${date} · $${amt}`;
+      m.append(ttl);
+      svg.append(m);
+    }
+
+    // next earnings, in the room to the right
+    if (earnAt != null && earnAt <= i1 + pad() && earnAt >= i0) {
+      const x = X(earnAt);
+      svg.append(mk("line", { x1: x, x2: x, y1: PT, y2: H - PB, stroke: css("--b2"),
+        "stroke-width": 1, "stroke-dasharray": "3 3" }));
+      const tri = mk("path", { d: `M${x},${PT + 9} L${x + 5},${PT} L${x - 5},${PT} Z`, fill: css("--b2") });
+      const ttl = mk("title"); ttl.textContent = `Next earnings ${ser.earn}`;
+      tri.append(ttl);
+      svg.append(tri);
+    }
+
+    // band labels pinned where the data ends, placed to the RIGHT of the last
+    // candle (in the projection space) so they never cover price action
+    if (b === n - 1) {
+      for (const [val, colour, label] of labels) {
+        const yv = Y(label === "Upper" ? d.upper : d.lower);
+        const text = money(val);
+        const w = text.length * 6.2 + 10;
+        const x0 = Math.min(X(n - 1) + 9, W - PR - w - 4);
+        svg.append(mk("rect", { x: x0, y: yv - 16.5, width: w, height: 16, rx: 3,
+          fill: css("--surface"), opacity: .9 }));
+        const txt = mk("text", { x: x0 + 5, y: yv - 5, fill: css(colour), "font-size": 11.5,
+          "font-weight": 400 });
+        txt.textContent = text;
+        svg.append(txt);
+      }
+      // the forecast cone: trend continuation + widening 95% band
+      if (S.fc && coneEnd() > 0.5) {
+        const hE = coneEnd();
+        const steps = 24;
+        let up2 = "", lo2p = "";
+        for (let k2 = 0; k2 <= steps; k2++) {
+          const h = hE * k2 / steps;
+          const x = X(n - 1 + h), m2 = midAt(n - 1 + h), s2 = 2 * seAt(h);
+          up2 += (k2 ? "L" : "M") + x + "," + Y(m2 + s2);
+          lo2p = "L" + x + "," + Y(m2 - s2) + lo2p;
+        }
+        svg.append(mk("path", { d: up2 + lo2p + "Z", fill: css("--wash") }));
+        for (const sign of [1, -1]) {
+          let pth = "";
+          for (let k2 = 0; k2 <= steps; k2++) {
+            const h = hE * k2 / steps;
+            pth += (k2 ? "L" : "M") + X(n - 1 + h) + "," + Y(midAt(n - 1 + h) + sign * 2 * seAt(h));
+          }
+          svg.append(mk("path", { d: pth, fill: "none", stroke: css("--accent"),
+            "stroke-width": 1, opacity: .5 }));
+        }
+        svg.append(mk("line", { x1: X(n - 1), y1: Y(midAt(n - 1)), x2: X(n - 1 + hE),
+          y2: Y(midAt(n - 1 + hE)), stroke: css("--accent"), "stroke-width": 1.5,
+          "stroke-dasharray": "5 4" }));
+        const lblY = Y(midAt(n - 1 + hE));
+        if (lblY > PT + 6 && lblY < H - PB - 6) {
+          const t2 = mk("text", { x: X(n - 1 + hE) - 5, y: lblY - 6, "text-anchor": "end",
+            fill: css("--accent-text"), "font-size": 10.5, "font-weight": 650 });
+          t2.textContent = "trend → " + money(midAt(n - 1 + hE));
+          svg.append(t2);
+        }
+      }
+
+      // TradingView-style price tag riding the axis at the last close
+      const yp = Y(ser.c[n - 1]);
+      if (yp > PT - 8 && yp < H - PB + 8) {
+        svg.append(mk("rect", { x: W - PR + 2, y: yp - 8.5, width: PR - 6, height: 17, rx: 4,
+          fill: css("--accent") }));
+        const tag = mk("text", { x: W - PR + 2 + (PR - 6) / 2, y: yp + 3.5, fill: css("--tag-ink"),
+          "font-size": 10.5, "text-anchor": "middle", "font-weight": 700 });
+        tag.textContent = "$" + fmt(ser.c[n - 1], ser.c[n - 1] >= 1000 ? 0 : 2);
+        svg.append(tag);
+      }
+    }
+
+    const tk = ticks(a, b);
+    tk.forEach((i, k) => {
+      const t = mk("text", { x: X(i), y: H - 7, fill: css("--muted"), "font-size": 11,
+        "text-anchor": k === 0 ? "start" : k === tk.length - 1 ? "end" : "middle" });
+      t.textContent = barLabel(ser.t[i]);
+      svg.append(t);
+    });
+    svg.dataset.h = H; svg.dataset.pt = PT; svg.dataset.pb = PB;
+    svg._Y = Y;
+    return svg;
+  }
+
+  function wrSVG() {
+    const H = 130, PT = 10, PB = 18;
+    const Y = v => PT + (-v / 100) * (H - PT - PB);     // 0 at top, -100 at bottom
+    const a = Math.max(0, Math.floor(i0)), b = Math.min(n - 1, Math.ceil(i1));
+    const svg = mk("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", class: "pan",
+      "aria-label": `${d.sym} Williams %R, 14 bars` });
+
+    svg.append(mk("rect", { x: PL, y: Y(0), width: plotW, height: Y(-20) - Y(0), fill: css("--tint-hi") }));
+    svg.append(mk("rect", { x: PL, y: Y(-80), width: plotW, height: Y(-100) - Y(-80), fill: css("--tint-lo") }));
+    for (const v of [0, -20, -50, -80, -100]) {
+      svg.append(mk("line", { x1: PL, x2: W - PR, y1: Y(v), y2: Y(v),
+        stroke: css(v === -20 || v === -80 ? "--axis" : "--grid"), "stroke-width": 1 }));
+      const t = mk("text", { x: W - PR + 6, y: Y(v) + 4, fill: css("--muted"), "font-size": 11 });
+      t.textContent = v; svg.append(t);
+    }
+    let path = "", pen = false;
+    for (let i = a; i <= b; i++) {
+      const v = ser.wr[i];
+      if (v == null) { pen = false; continue; }
+      path += (pen ? "L" : "M") + X(i) + "," + Y(v);
+      pen = true;
+    }
+    svg.append(mk("path", { d: path, fill: "none", stroke: css("--series"), "stroke-width": 2, "stroke-linejoin": "round" }));
+    if (b === n - 1 && ser.wr[n - 1] != null) {
+      svg.append(mk("circle", { cx: X(n - 1), cy: Y(ser.wr[n - 1]), r: 4.5, fill: css("--series"),
+        stroke: css("--surface"), "stroke-width": 2 }));
+    }
+    svg.dataset.h = H; svg.dataset.pt = PT; svg.dataset.pb = PB;
+    svg._Y = Y;
+    return svg;
+  }
+
+  function nearestBar(date) {
+    for (let i = ser.t.length - 1; i >= 0; i--) {
+      const t = ser.t[i];
+      if ((t.length === 7 ? t : t) <= (t.length === 7 ? date.slice(0, 7) : date)) return i;
+    }
+    return null;
+  }
+
+  function ticks(a, b) {
+    const out = [], k = b - a;
+    if (k <= 0) return [a];
+    for (const f of [0, 0.5, 1]) out.push(Math.round(a + f * k));
+    return [...new Set(out)];
+  }
+
+  /* the steady readout above the chart — TradingView's legend pattern: the eye
+     stays in one place while the crosshair sweeps */
+  function setReadout(i) {
+    readout.textContent = "";
+    const col = ser.c[i] >= ser.o[i] ? "var(--up)" : "var(--down)";
+    readout.append(el("span", "rdate", barLabel(ser.t[i])));
+    const pair = (k, v, c2) => {
+      const s = el("span");
+      if (k) s.append(k + " ");
+      const b2 = el("b", "", v);
+      if (c2) b2.style.color = c2;
+      s.append(b2);
+      readout.append(s);
+    };
+    if (S.chart === "candle") {
+      pair("O", fmt(ser.o[i], 2), col); pair("H", fmt(ser.h[i], 2), col);
+      pair("L", fmt(ser.l[i], 2), col); pair("C", fmt(ser.c[i], 2), col);
+    } else {
+      pair("Close", fmt(ser.c[i], 2), col);
+    }
+    if (i > 0 && ser.c[i - 1]) {
+      const ch = (ser.c[i] / ser.c[i - 1] - 1) * 100;
+      pair("", (ch >= 0 ? "+" : "") + fmt(ch, 2) + "%", ch >= 0 ? "var(--up)" : "var(--down)");
+    }
+    const lo2 = midAt(i) - 2 * dev, hi2 = midAt(i) + 2 * dev;
+    const p = (ser.c[i] - lo2) / (hi2 - lo2) * 100;
+    pair("Channel", pct(p), zoneColor(p));
+    if (ser.wr[i] != null) {
+      pair("%R", fmt(ser.wr[i], 1),
+        ser.wr[i] <= -80 ? "var(--dv-lo1)" : ser.wr[i] >= -20 ? "var(--dv-hi1)" : null);
+    }
+  }
+
+  /* ---- interaction ---- */
+  let drag = null;
+  function wire(host2) {
+    host2.addEventListener("pointermove", ev => {
+      const svg = host2.querySelector("svg");
+      if (!svg) return;
+      const r = svg.getBoundingClientRect();
+      const bx = (ev.clientX - r.left) / r.width * W;
+      if (drag) {
+        const shift = (drag.x - bx) / plotW * span();
+        let a = drag.i0 + shift, b = drag.i1 + shift;
+        const w = b - a;
+        a = Math.max(-pad(), Math.min(n - 1 - MIN_BARS, a));
+        i0 = a; i1 = a + w;
+        if (i1 > n - 1 + pad()) { i1 = n - 1 + pad(); i0 = i1 - w; }
+        draw();
+        return;
+      }
+      const i = Math.round(barAt(bx));
+      if (i < 0 || i > n - 1) { clearCross(); return; }
+      cross = i; redrawOverlay();
+      setReadout(i);
+    });
+    host2.addEventListener("pointerleave", clearCross);
+    host2.addEventListener("pointerdown", ev => {
+      const svg = host2.querySelector("svg");
+      const r = svg.getBoundingClientRect();
+      drag = { x: (ev.clientX - r.left) / r.width * W, i0, i1 };
+      host2.setPointerCapture(ev.pointerId);
+      host.classList.add("grabbing");
+    });
+    const end = ev => {
+      drag = null;
+      host.classList.remove("grabbing");
+      try { host2.releasePointerCapture(ev.pointerId); } catch (e) {}
+    };
+    host2.addEventListener("pointerup", end);
+    host2.addEventListener("pointercancel", end);
+    host2.addEventListener("dblclick", () => { i0 = 0; i1 = n - 1; draw(); });
+    host2.addEventListener("wheel", ev => {
+      ev.preventDefault();
+      const svg = host2.querySelector("svg");
+      const r = svg.getBoundingClientRect();
+      const anchor = barAt((ev.clientX - r.left) / r.width * W);
+      zoom(ev.deltaY > 0 ? 1.15 : 1 / 1.15, anchor);
+    }, { passive: false });
+  }
+
+  function zoom(k, anchor) {
+    const w = (i1 - i0) * k;
+    if (w < MIN_BARS || w > (n - 1) * 3) return;
+    const f = (anchor - i0) / (i1 - i0 || 1);
+    i0 = anchor - f * w;
+    i1 = i0 + w;
+    if (i0 < -pad()) { i0 = -pad(); i1 = i0 + w; }
+    if (i1 > n - 1 + pad() * 2) { i1 = n - 1 + pad() * 2; i0 = i1 - w; }
+    draw();
+  }
+
+  function clearCross() { cross = null; redrawOverlay(); setReadout(n - 1); }
+  function redrawOverlay() {
+    for (const h of [priceHost, wrHost]) {
+      const svg = h.querySelector("svg");
+      if (!svg) continue;
+      svg.querySelectorAll(".xh").forEach(x => x.remove());
+      if (cross == null) continue;
+      const line = mk("line", { class: "xh", x1: X(cross), x2: X(cross), y1: +svg.dataset.pt,
+        y2: +svg.dataset.h - +svg.dataset.pb, stroke: css("--axis"), "stroke-width": 1 });
+      svg.append(line);
+    }
+  }
+
+  function draw() {
+    priceHost.replaceChildren(priceSVG());
+    wrHost.replaceChildren(wrSVG());
+    redrawOverlay();
+    zoomLabel.textContent = Math.round(i1 - i0 + 1) + " bars";
+  }
+
+  /* ---- assembly ---- */
+  const bar = el("div", "chartbar");
+  const zoomLabel = el("span", "hint");
+  const mkBtn = (t, title, fn) => { const b = el("button", "btn sm", t); b.title = title; b.onclick = fn; return b; };
+  bar.append(
+    el("span", "hint", "Drag to pan · scroll to zoom · double-click to reset"),
+    el("div", "spacer"),
+    zoomLabel,
+  );
+  // range presets, TradingView's bottom-row idea folded into the toolbar
+  const PRESETS = { "1d": [["1M", 21], ["3M", 63]], "1wk": [["3M", 13], ["1Y", 52]], "1mo": [["1Y", 12], ["5Y", 60]] };
+  for (const [lab, bars2] of PRESETS[S.tf] || []) {
+    if (n > bars2) bar.append(mkBtn(lab, "Last " + lab, () => { i1 = n - 1; i0 = n - bars2; draw(); }));
+  }
+  bar.append(
+    mkBtn("All", "Show the whole window", () => { i0 = 0; i1 = n - 1; draw(); }),
+    mkBtn("−", "Zoom out", () => zoom(1.3, (i0 + i1) / 2)),
+    mkBtn("+", "Zoom in", () => zoom(1 / 1.3, (i0 + i1) / 2)),
+  );
+  const fcBtn = el("button", "btn sm", "✦ Forecast");
+  fcBtn.setAttribute("aria-pressed", String(S.fc));
+  attachTip(fcBtn, DEFS.outlook);
+  fcBtn.onclick = () => {
+    S.fc = !S.fc;
+    store.set("linreg.fc", S.fc);
+    fcBtn.setAttribute("aria-pressed", String(S.fc));
+    outlookEl.hidden = !S.fc;
+    draw();
+  };
+  bar.append(fcBtn);
+
+  /* the generated outlook — arithmetic in sentences, clearly labelled */
+  const outlookEl = el("div", "outlook");
+  outlookEl.hidden = !S.fc;
+  (() => {
+    const H_BARS = { "1d": 21, "1wk": 13, "1mo": 12 }[S.tf] || 12;
+    const H_WORD = { "1d": "a month", "1wk": "a quarter", "1mo": "a year" }[S.tf] || "a year";
+    const seH = (h) => {
+      const N = n, mx = (N - 1) / 2, Sxx = N * (N * N - 1) / 12;
+      return dev * Math.sqrt(1 + 1 / N + Math.pow((N - 1 + h) - mx, 2) / Sxx);
+    };
+    const target = midAt(n - 1 + H_BARS);
+    const band = 2 * seH(H_BARS);
+    const upPct = (target / d.price - 1) * 100;
+    const eDays2 = daysTill(ser.earn);
+    const etf2 = (S.meta.benchmarks || []).find(x => x.sym === (S.meta.sector_etf || {})[d.sector]);
+    const head = el("div", "oh");
+    head.append("Trend forecast", infoIcon(DEFS.outlook));
+    const p1 = el("p");
+    p1.append(el("b", "", d.sym), ` is ${d.zone.toLowerCase().replace("on the", "sitting on its").replace("below lower band", "below its floor")} ` +
+      `of a ${d.strength.toLowerCase()} ${d.dir.toLowerCase()} (straightness R ${fmt(d.r, 2)}), ` +
+      `at ${pct(d.pos)} of its channel. It has made ${d.swings} top-to-bottom round trip${d.swings === 1 ? "" : "s"} over the window.`);
+    const p2 = el("p");
+    p2.append(`If the last ${d.bars} bars' trend simply continued, the trend line would sit near `,
+      el("b", "", money(target)),
+      ` in ${H_WORD} (${upPct >= 0 ? "+" : ""}${fmt(upPct, 1)}% from here), with the statistical range spanning `,
+      el("b", "", money(target - band)), " to ", el("b", "", money(target + band)), ".");
+    const bits = [];
+    if (eDays2 != null && eDays2 >= 0) bits.push(`Earnings in ${eDays2} day${eDays2 === 1 ? "" : "s"} could move it either way.`);
+    if (etf2 && etf2.sym !== d.sym) bits.push(`Its sector fund ${etf2.sym} is ${standing(etf2.pos).toLowerCase()} of its own channel.`);
+    const p3 = el("p");
+    p3.textContent = bits.join(" ");
+    const p4 = el("p", "hint",
+      "Arithmetic from past prices — the further out, the less it means. Not a prediction of news, and not advice.");
+    outlookEl.append(head, p1, p2);
+    if (bits.length) outlookEl.append(p3);
+    outlookEl.append(p4);
+  })();
+
+  const key = el("div", "legend");
+  key.append(attachTip(keyItem("Upper band", css("--dv-hi1")), DEFS.upper),
+             attachTip(keyItem("Regression", css("--muted")), DEFS.mid),
+             attachTip(keyItem("Lower band", css("--dv-lo1")), DEFS.lower));
+  if ((ser.div || []).length) key.append(attachTip(keyMark("◆", css("--star"), "Ex-dividend"),
+    "Gold diamonds mark days the stock traded without its next dividend payment — the price usually slips by about the dividend amount."));
+  if (ser.earn) {
+    key.append(attachTip(keyMark("▲", css("--b2"), "Next earnings " + longDate(ser.earn) +
+      (earnDays != null && earnDays > 0 ? ` · ${earnDays} days` : "")),
+      "The dashed violet marker shows the next scheduled earnings report, placed out in the empty space to the right of the last bar."));
+  }
+
+  host.append(bar, key, readout, outlookEl, priceHost,
+    el("div", "charttitle", "Williams %R (14)"),
+    el("div", "charthint",
+      "Where the close sits in its recent high-low range: 0 is the top of the range, −100 the bottom. " +
+      "Below −80 is the usual oversold reading, above −20 overbought."),
+    wrHost);
+  host.className = "chartwrap";
+  draw();
+  setReadout(n - 1);
+  wire(priceHost);
+  wire(wrHost);
+  return host;
+}
+
+function keyItem(label, colour) {
+  const s = el("span");
+  const i = el("i"); i.style.background = colour;
+  s.append(i, label);
+  return s;
+}
+function keyMark(glyph, colour, label) {
+  const s = el("span");
+  const g = el("b", "", glyph);
+  g.style.cssText = "color:" + colour + ";margin-right:5px;font-size:11px";
+  s.append(g, label);
+  return s;
+}
+
+
+/* ------------------------------------------------------------------- the modal */
+async function openSym(sym) {
+  // benchmarks are scanned identically and carry the same fields, so the ETFs in
+  // the market strip open the very same chart the stocks do
+  const d = S.rows.find(x => x.sym === sym) ||
+            (S.meta.benchmarks || []).find(x => x.sym === sym);
+  if (!d) return;
+  const isBench = !!d.kind;
+  const dlg = $("#dlg"), c = $("#dlgc");
+  dlg.dataset.sym = sym;
+  c.textContent = "";
+
+  const idx = S.view.findIndex(x => x.sym === sym);
+  const step = n => {
+    if (!S.view.length) return;
+    const j = ((idx < 0 ? 0 : idx + n) % S.view.length + S.view.length) % S.view.length;
+    openSym(S.view[j].sym);
+  };
+  const head = el("div", "mhead");
+  const h = el("div");
+  const h2 = el("h2");
+  h2.append(starButton(d.sym, true), d.sym + " · " + d.name);
+  const pchip = el("span", "pchip");
+  pchip.append(el("b", "", money(d.price)));
+  if (d.chg != null) {
+    const cv = el("span", d.chg >= 0 ? "up" : "down", (d.chg >= 0 ? "+" : "") + fmt(d.chg, 2) + "%");
+    pchip.append(cv);
+  }
+  h2.append(pchip);
+  h.append(h2, el("div", "sub",
+    `${S.meta.timeframe_name} · ` +
+    (isBench ? `Benchmark · ${d.zone}` :
+      `${d.sector} · rank ${d.rank} of ${S.meta.stats.total} · ${d.zone}`) +
+    ` · ${d.bars} bars${d.thin ? " (short)" : ""}` +
+    (!isBench && idx >= 0 ? ` · ${idx + 1} of ${S.view.length} shown` : "")));
+  const nav = el("div", "navbtns");
+  const gbtn = el("button", "btn", "?");
+  gbtn.title = "How to read this — plain-English guide";
+  gbtn.onclick = showGuide;
+  nav.append(gbtn);
+  const prevB = el("button", "btn", "‹");
+  const nextB = el("button", "btn", "Next ›");
+  prevB.title = "Previous stock in the list (←)";
+  nextB.title = "Next stock in the list (→)";
+  if (idx > 0) prevB.title = "Previous: " + S.view[idx - 1].sym;
+  if (idx >= 0 && idx < S.view.length - 1) nextB.title = "Next: " + S.view[idx + 1].sym;
+  prevB.onclick = () => step(-1);
+  nextB.onclick = () => step(1);
+  prevB.disabled = nextB.disabled = S.view.length < 2;
+  if (!isBench) nav.append(prevB, nextB);
+  const close = el("button", "btn", "Close");
+  close.onclick = () => dlg.close();
+  head.append(h, el("div", "spacer"), nav, close);
+  c.append(head);
+
+  const body = el("div", "mbody");
+  const agg = S.meta.agg || { all: {}, sectors: {} };
+  const sa = (agg.sectors || {})[d.sector] || {};
+  const away = v => (v == null || !d.price ? "—" : (d.price / v - 1 >= 0 ? "+" : "") + fmt((d.price / v - 1) * 100, 1) + "%");
+  const secEtf = (S.meta.sector_etf || {})[d.sector];
+  const benchOf = s => (S.meta.benchmarks || []).find(b => b.sym === s);
+  const etf = benchOf(secEtf);
+
+  const eNum = daysTill(d.earn);
+  const eDays = earningsWords(eNum);
+  const wrState = d.wr == null ? null : d.wr <= -80 ? "oversold" : d.wr >= -20 ? "overbought" : "mid-range";
+  const wrCol = wrState === "oversold" ? "var(--dv-lo1)" : wrState === "overbought" ? "var(--dv-hi1)" : null;
+  // The seven core metrics stay visible; everything else waits behind the
+  // expander. Both rows are seven wide, so the grid stays a clean rectangle.
+  const stats = [
+    ["Price", money(d.price),
+      d.hi52 == null ? `${away(d.mid)} vs regression`
+        : d.hi52 >= -0.5 ? "at its 52-week high" : `${fmt(-d.hi52, 1)}% below 52-wk high`,
+      null, null, 0, DEFS.price],
+    ["Position in channel", pct(d.pos),
+      sa.pos != null ? `sector ${pct(sa.pos)} · all ${pct(agg.all.pos)}` : `all ${pct(agg.all.pos)}`,
+      zoneColor(d.pos), zoneColor(d.pos), 0, DEFS.pos],
+    ["Trend", (d.dir === "Uptrend" ? "▲ " : "▼ ") + d.dir,
+      sa.up != null ? `${sa.up}% of sector rising` : "",
+      d.dir === "Uptrend" ? "var(--up)" : "var(--down)",
+      d.dir === "Uptrend" ? "var(--up)" : "var(--down)", 0, DEFS.trend],
+    ["Channel swings", String(d.swings), "top ↔ bottom band trips", null, null, 0, DEFS.swings],
+    ["Days till earnings", eDays[0],
+      d.earn ? `${eDays[1]} · ${longDate(d.earn)}` : eDays[1],
+      d.earn ? "var(--b2)" : null,
+      eNum != null && eNum >= 0 && eNum <= 7 ? "var(--soon)" : null, 0, DEFS.earn],
+    ["Lower band", money(d.lower), `${away(d.lower)} away`, "var(--dv-lo1)", null, 0, DEFS.lower],
+    ["Upper band", money(d.upper), `${away(d.upper)} away`, "var(--dv-hi1)", null, 0, DEFS.upper],
+
+    ["Regression", money(d.mid), "the trend line", "var(--dv-mid)", null, 1, DEFS.mid],
+    ["Pearson R", fmt(d.r, 3), sa.r != null ? `sector median ${fmt(sa.r, 2)}` : "trend fit", null, null, 1, DEFS.r],
+    ["Strength", d.strength, "of the channel fit", null, null, 1, DEFS.strength],
+    ["Williams %R", d.wr == null ? "—" : fmt(d.wr, 1),
+      wrState == null ? "14-bar range" : `${wrState} · 14 bars`, wrCol, wrCol, 1, DEFS.wr],
+    ["Since last run", d.prev == null ? "—" : (d.pos - d.prev > 0 ? "+" : "") + fmt(d.pos - d.prev, 1),
+      d.prev == null ? "first reading" : `was ${pct(d.prev)} of channel`, null, null, 1, DEFS.delta],
+    ["Market cap", fmtCap(d.cap), d.tier && d.tier !== "Unknown" ? d.tier.toLowerCase() : "", null, null, 1, DEFS.cap],
+    ["Bars", String(d.bars), d.thin ? "short history" : `full ${S.meta.length}-bar window`, null, null, 1, DEFS.bars],
+  ];
+  const hiddenCount = stats.filter(s => s[5]).length;
+  const kvWrap = el("div");
+  const drawKV = () => {
+    kvWrap.textContent = "";
+    const kv = el("div", "kv");
+    for (const [k, v, sub, rail, vcol, hide, def] of stats) {
+      if (hide && !S.kvx) continue;
+      const b = el("div");
+      if (rail) b.style.borderLeftColor = rail;
+      const kEl = el("div", "k", k);
+      if (def) kEl.append(infoIcon(def));
+      b.append(kEl);
+      const val = el("div", "v", v);
+      if (vcol) val.style.color = vcol;
+      b.append(val);
+      if (k === "Position in channel") b.append(meter(d.pos));
+      if (sub) b.append(el("div", "b", sub));
+      kv.append(b);
+    }
+    kvWrap.append(kv);
+    const more = el("button", "kvmore",
+      S.kvx ? "⌃ Fewer metrics" : `⌄ ${hiddenCount} more metrics — regression, Pearson R, strength, %R…`);
+    more.onclick = () => { S.kvx = !S.kvx; store.set("linreg.kvx", S.kvx); drawKV(); };
+    kvWrap.append(more);
+  };
+  drawKV();
+  body.append(kvWrap);
+
+  // Benchmarks: the same number the reader just learned (position in channel),
+  // shown for the stock and three references side by side. Identical cards make
+  // the comparison visual — no sentence to parse.
+  const marks = [etf, benchOf("SPY"), benchOf("QQQ")]
+    .filter(b => b && b.sym !== d.sym).slice(0, 3);
+  if (marks.length) {
+    const bt = el("div", "charttitle", "How does this compare to the market?");
+    bt.append(infoIcon(DEFS.bench));
+    body.append(bt);
+    body.append(el("div", "charthint",
+      "Each card runs the same 100-bar channel math on itself. 0% = its lower band, 100% = its upper band."));
+    const bx = el("div", "bench");
+    const cards = [[d, true], ...marks.map(b => [b, false])];
+    for (const [b, isSelf] of cards) {
+      const card = el("div", isSelf ? "self" : "");
+      const t = el("div", "t");
+      t.append(el("span", "s", b.sym),
+               el("span", "n", isSelf ? "this stock" : b.name));
+      card.append(t);
+      const p = el("div", "bp", pct(b.pos));
+      p.style.color = zoneColor(b.pos);
+      card.append(p, meter(b.pos));
+      const chgTxt = b.chg == null ? "" :
+        ` · ${b.chg >= 0 ? "▲" : "▼"} ${fmt(Math.abs(b.chg), 1)}% ${CHG_WORD[S.tf] || ""}`;
+      card.append(el("div", "bsub", standing(b.pos).toLowerCase() + chgTxt));
+      card.title = `${isSelf ? d.name : b.name} · ${pct(b.pos)} of its own ${S.meta.timeframe_name.toLowerCase()} channel`;
+      if (!isSelf) { card.classList.add("act"); card.onclick = () => openSym(b.sym); card.style.cursor = "pointer"; }
+      bx.append(card);
+    }
+    body.append(bx);
+  }
+
+  const crow = el("div", "crow");
+  crow.append(el("div", "charttitle", S.meta.timeframe_name + " price and regression channel"));
+  crow.append(el("div", "spacer"));
+  crow.append(segment(["candle", "line"], ["Candles", "Line"], S.chart, v => {
+    S.chart = v; store.set("linreg.chart", v); openSym(sym);
+  }, "seg-chart"));
+  crow.append(segment(S.tfs.map(t => t.id), S.tfs.map(t => t.name), S.tf,
+                      v => switchTF(v, sym), "seg-tf"));
+  body.append(crow);
+  const slot = el("div"); body.append(slot);
+
+  const foot = el("div", "mfoot");
+  const tv = el("a", "btn", "Open on TradingView");
+  tv.href = "https://www.tradingview.com/chart/?symbol=" + encodeURIComponent(d.sym) +
+            "&interval=" + ({ "1d": "D", "1wk": "W", "1mo": "M" }[S.tf] || "M");
+  tv.target = "_blank"; tv.rel = "noopener";
+  foot.append(tv);
+  // from a sector ETF's chart, drill straight into that sector's stocks
+  if (isBench && d.kind === "sector") {
+    const drill = el("button", "btn", `Show ${d.sector} stocks`);
+    drill.onclick = () => {
+      dlg.close();
+      reset();
+      $("#sector").value = d.sector;
+      document.querySelectorAll(".tile").forEach(t => t.classList.remove("on"));
+      render();
+      flash();
+      $("#card").scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    foot.append(drill);
+  }
+  body.append(foot);
+  c.append(body);
+
+  if (!dlg.open) dlg.showModal();
+  location.hash = d.sym;
+
+  const ser = await seriesFor(S.tf, d.sym);
+  if (dlg.dataset.sym !== sym) return;
+  slot.textContent = "";
+  slot.append(ser ? chartPanel(d, ser)
+                  : el("div", "charthint", "No price series available for this symbol."));
+}
+
+function segment(values, labels, current, onPick, cls) {
+  const s = el("div", "seg" + (cls ? " " + cls : ""));
+  values.forEach((v, i) => {
+    const b = el("button", "", labels[i]);
+    b.setAttribute("aria-selected", v === current);
+    b.setAttribute("role", "tab");
+    b.onclick = () => { if (v !== current) onPick(v); };
+    s.append(b);
+  });
+  return s;
+}
+
+$("#dlg").addEventListener("close", () => {
+  $("#dlg").dataset.sym = "";
+  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
+});
+$("#dlg").addEventListener("click", e => { if (e.target.id === "dlg") $("#dlg").close(); });
+
+/* keyboard: ←/→ walk the list, f favorite, c candles/line, 1/2/3 timeframe, / search */
+addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if ($("#gdlg").open) return;                      // guide on top: only Esc applies
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || ""))) return;
+  const dlg = $("#dlg");
+  const sym = dlg.open ? dlg.dataset.sym : null;
+
+  if (e.key === "/" && !dlg.open) { e.preventDefault(); $("#q").focus(); return; }
+  if (["1", "2", "3"].includes(e.key)) {
+    const t = S.tfs[+e.key - 1];
+    if (t && t.id !== S.tf) switchTF(t.id, sym || undefined);
+    return;
+  }
+  if (!sym) return;
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    e.preventDefault();
+    if (!S.view.length) return;
+    const i = S.view.findIndex(x => x.sym === sym);
+    const j = ((i < 0 ? 0 : i + (e.key === "ArrowRight" ? 1 : -1)) % S.view.length + S.view.length) % S.view.length;
+    openSym(S.view[j].sym);
+  } else if (e.key === "f") {
+    const star = dlg.querySelector(".mhead .star");
+    if (star) star.click();
+  } else if (e.key === "c") {
+    S.chart = S.chart === "candle" ? "line" : "candle";
+    store.set("linreg.chart", S.chart);
+    openSym(sym);
+  }
+});
+
+/* ------------------------------------------------------------ timeframe switch */
+function tfControl() {
+  const seg = $("#tfseg");
+  seg.textContent = "";
+  for (const t of S.tfs) {
+    const b = el("button", "", t.name);
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", t.id === S.tf);
+    b.title = t.name + " bars, " + (S.meta ? S.meta.length : 100) + "-bar regression";
+    b.onclick = () => { if (t.id !== S.tf) switchTF(t.id); };
+    seg.append(b);
+  }
+}
+
+async function switchTF(tf, reopen) {
+  S.tf = tf;
+  store.set("linreg.tf", tf);
+  $("#card").classList.add("loading");
+  const j = await latest(tf);
+  $("#card").classList.remove("loading");
+  if (!j) { $("#stamp").textContent = "No data for that timeframe yet."; return; }
+  applyLatest(j);
+  tfControl();
+  render();
+  if (reopen) openSym(reopen);
+}
+
+function drawStamp(j) {
+  const gen = new Date(j.generated);
+  const mins = Math.round((Date.now() - gen.getTime()) / 6e4);
+  const ago = mins < 1 ? "just now" : mins < 60 ? mins + "m ago"
+    : mins < 48 * 60 ? Math.round(mins / 60) + "h ago" : Math.round(mins / 1440) + "d ago";
+  const stamp = $("#stamp");
+  stamp.textContent = "";
+  stamp.append(
+    `${j.stats.total.toLocaleString()} stocks · ${j.timeframe_name.toLowerCase()} view · updated ` +
+    gen.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) +
+    ` (${ago})`,
+    infoIcon(DEFS.method));
+}
+setInterval(() => { if (S.meta) drawStamp(S.meta); }, 60e3);
+
+function applyLatest(j) {
+  S.meta = j; S.rows = j.rows;
+  drawStamp(j);
+  $("#len").textContent = j.length;
+  $("#dev").textContent = j.devs;
+  const sec = $("#sector"), keep = sec.value;
+  sec.textContent = "";
+  const all = el("option", "", "All sectors"); all.value = ""; sec.append(all);
+  for (const s of [...new Set(S.rows.map(d => d.sector))].sort()) {
+    const o = el("option", "", s); o.value = s; sec.append(o);
+  }
+  sec.value = keep;
+  tiles();
+  renderMkt();
+}
+
+/* --------------------------------------------------------- the reading guide */
+const GUIDE_DIAGRAM = `
+<svg viewBox="0 0 560 170" role="img" aria-label="Diagram of a trend channel">
+  <polygon points="20,96 540,26 540,86 20,156" fill="var(--band)"/>
+  <line x1="20" y1="96" x2="540" y2="26" stroke="var(--dv-hi1)" stroke-width="2"/>
+  <line x1="20" y1="126" x2="540" y2="56" stroke="var(--axis)" stroke-width="1.5"/>
+  <line x1="20" y1="156" x2="540" y2="86" stroke="var(--dv-lo1)" stroke-width="2"/>
+  <circle cx="440" cy="103" r="6" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>
+  <text x="30" y="90" transform="rotate(-7.7 30 90)" fill="var(--dv-hi1)" font-size="12" font-weight="650">Ceiling — upper band</text>
+  <text x="30" y="120" transform="rotate(-7.7 30 120)" fill="var(--ink-2)" font-size="12">Trend line</text>
+  <text x="30" y="150" transform="rotate(-7.7 30 150)" fill="var(--dv-lo1)" font-size="12" font-weight="650">Floor — lower band</text>
+  <text x="428" y="127" text-anchor="end" fill="var(--accent-text)" font-size="12" font-weight="650">the scanner looks</text>
+  <text x="428" y="141" text-anchor="end" fill="var(--accent-text)" font-size="12" font-weight="650">for stocks here →</text>
+</svg>`;
+
+function showGuide() {
+  const g = $("#gdlg"), c = $("#gdlgc");
+  if (!c.dataset.built) {
+    c.dataset.built = "1";
+    const head = el("div", "mhead");
+    const h = el("div");
+    h.append(el("h2", "", "How to read this scanner"));
+    h.append(el("div", "sub", "Everything on the page, in plain English."));
+    const close = el("button", "btn", "Close");
+    close.onclick = () => g.close();
+    head.append(h, el("div", "spacer"), close);
+    c.append(head);
+    const body = el("div", "guide");
+    const dia = el("div", "gdiag");
+    dia.insertAdjacentHTML("afterbegin", GUIDE_DIAGRAM);
+    body.append(dia);
+    const add = (t, p) => { body.append(el("h3", "", t), el("p", "", p)); };
+    add("The trend channel",
+      "For every stock, a straight line is drawn through its last 100 closing prices — its trend. A band is then drawn two typical wobbles (2σ) above and below that line. Prices spend most of their time inside this channel: the top edge acts like a ceiling, the bottom edge like a floor.");
+    add("Position in channel — the main number",
+      "Where the price sits between those edges. 0% = right on the floor, 100% = right on the ceiling, 50% = on the trend line. A negative number means the price has fallen through the floor. The whole table is ranked by this, lowest first, because stocks sitting on or below the floor of a rising channel are the setup this scanner exists to find.");
+    add("The colours",
+      "One rule everywhere: blue means near or below the floor (potentially cheap versus its own trend), red means near or above the ceiling (potentially stretched), plain ink means mid-channel. Green and red arrows are only ever the trend direction, gold diamonds are dividend days, and violet is the next earnings report.");
+    add("Trend, straightness, and swings",
+      "Trend is simply whether the fitted line rises or falls. Pearson R (called straightness in the filter) says how clean that line is: 1.0 is a ruler-straight uptrend, 0 is noise. Channel swings counts how many times the price has travelled from the ceiling all the way to the floor — the more round trips, the more seriously the floor has been respected in the past.");
+    add("Williams %R",
+      "A short-term gauge under the chart: where today's close sits inside the last 14 bars' high-to-low range. 0 means at the very top of that range, −100 at the very bottom. Below −80 is commonly read as oversold, above −20 as overbought.");
+    add("The benchmark cards",
+      "The same channel math is run on SPY, QQQ and each sector fund. If a stock is at 5% of its channel while its sector sits at 80%, the stock is uniquely weak. If everything is near its floor, it's the whole market, not the stock.");
+    add("Days till earnings",
+      "Companies report results every quarter, and prices often jump that day. The scanner shows how many days remain before the next report — it turns amber within a week — and marks the date on the chart with a violet dashed line.");
+    add("The ✦ Forecast toggle",
+      "Continues the fitted trend line forward at its current slope (the dashed terracotta line) and shades the statistical range around it — a cone that widens the further out you look, because uncertainty grows. A short generated summary puts the same numbers into sentences. It is arithmetic on past prices, not a prediction of news.");
+    body.append(el("p", "hint",
+      "All of this is mechanical arithmetic on price history. It says nothing about whether a business is good, cheap, or safe — it is a research shortlist, not advice."));
+    c.append(body);
+  }
+  if (!g.open) g.showModal();
+}
+$("#guidebtn").onclick = showGuide;
+
+/* ----------------------------------------------------------------- export etc. */
+$("#csv").onclick = () => {
+  const cols = ["rank","sym","name","sector","tier","price","chg","lower","mid","upper","pos","prev","dir","r","slope","swings","wr","hi52","bars","zone","sp500","earn"];
+  const esc = v => typeof v === "string" && /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  const csv = [cols.join(",")].concat(S.view.map(d => cols.map(k => esc(d[k] ?? "")).join(","))).join("\n");
+  const a = el("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = `linreg-${S.tf}-${S.meta.asof}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+};
+
+$("#alertcfg").onclick = () => {
+  const dlg = $("#dlg"), c = $("#dlgc");
+  dlg.dataset.sym = "";
+  c.textContent = "";
+  const head = el("div", "mhead");
+  const h = el("div");
+  h.append(el("h2", "", "Email alerts"));
+  h.append(el("div", "sub", "The scanner emails you when a stock crosses into the bottom zone or breaks below its lower band."));
+  const close = el("button", "btn", "Close"); close.onclick = () => dlg.close();
+  head.append(h, el("div", "spacer"), close);
+  const body = el("div", "mbody");
+  const p = el("div", "charthint");
+  p.append("Alerts are configured in the repo, not the browser — edit ");
+  p.append(el("code", "", "config.json"), " on GitHub and paste this in to watch only your favorites:");
+  const cfg = { alerts: {
+    mode: S.fav.size ? "watchlist" : "all",
+    watchlist: [...S.fav].sort(),
+    timeframes: [S.tf],
+    uptrend_only: true, min_r: 0.7, max_per_run: 25,
+  } };
+  const text = JSON.stringify(cfg, null, 2);
+  const pre = el("div", "pre", text);
+  const copy = el("button", "btn", "Copy config");
+  copy.onclick = () => { navigator.clipboard.writeText(text); copy.textContent = "Copied"; };
+  const foot = el("div", "mfoot");
+  foot.append(copy);
+  if (S.meta.repo) {
+    const a = el("a", "btn", "Edit config.json on GitHub");
+    a.href = "https://github.com/" + S.meta.repo + "/edit/main/config.json";
+    a.target = "_blank"; a.rel = "noopener"; foot.append(a);
+  }
+  body.append(p, pre, el("div", "charthint",
+    'mode "all" hears about every stock, "watchlist" only your favorites. timeframes picks which channels are watched — ' +
+    '["1mo"] is the classic monthly setup; add "1wk" or "1d" for faster signals.'), foot);
+  c.append(head, body);
+  if (!dlg.open) dlg.showModal();
+};
+
+/* ------------------------------------------------------------------------ boot */
+for (const id of ["q", "uni", "sector", "tier", "pos", "trend", "minr", "signal"]) {
+  $("#" + id).addEventListener(id === "q" ? "input" : "change", () => {
+    render();
+    document.querySelectorAll(".tile").forEach(t => t.classList.remove("on"));
+  });
+}
+for (const id of ["thinbtn", "favbtn"]) {
+  $("#" + id).onclick = e => {
+    const on = e.currentTarget.getAttribute("aria-pressed") === "true";
+    e.currentTarget.setAttribute("aria-pressed", String(!on));
+    render();
+  };
+}
+
+const stick = () => {
+  const f = document.querySelector(".filters");
+  const h = getComputedStyle(f).position === "sticky" ? Math.round(f.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty("--stick", h + "px");
+};
+addEventListener("resize", stick);
+new ResizeObserver(stick).observe(document.querySelector(".filters"));
+stick();
+
+/* auto-reload — an open tab picks up each 15-minute refresh on its own.
+   Polls the ~200-byte meta.json; when its timestamp moves, re-fetches the
+   current view and re-renders in place (filters, sort and scroll survive). */
+let _lastGen = null;
+async function checkFresh() {
+  if (baked() || document.hidden) return;
+  const m = await fetch("data/meta.json?" + Date.now()).then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!m || !m.generated) return;
+  if (_lastGen && m.generated !== _lastGen) {
+    S.cacheLatest = {}; S.cacheSeries = {};
+    const j = await latest(S.tf);
+    if (j) { applyLatest(j); render(); }
+  }
+  _lastGen = m.generated;
+}
+if (!baked()) {
+  setInterval(checkFresh, 180e3);
+  addEventListener("visibilitychange", () => { if (!document.hidden) checkFresh(); });
+}
+
+(async () => {
+  const meta = await getJSON("meta");
+  if (meta && meta.generated) _lastGen = meta.generated;
+  S.tfs = (meta && meta.timeframes) || [{ id: "1mo", name: "Monthly" }];
+  const saved = store.get("linreg.tf", null);
+  S.tf = S.tfs.some(t => t.id === saved) ? saved : (meta && meta.default) || S.tfs[S.tfs.length - 1].id;
+  const j = await latest(S.tf);
+  if (!j) {
+    $("#stamp").textContent = "No scan data yet — run the “Scan and publish” workflow in GitHub Actions.";
+    return;
+  }
+  applyLatest(j);
+  restoreFilters();
+  tfControl();
+  buildHead();
+  render();
+  if (location.hash.length > 1) openSym(decodeURIComponent(location.hash.slice(1)));
+})();
+</script>
+</body>
+</html>
