@@ -44,13 +44,32 @@ jobs:
 
       # Only the position history has to survive between runs; everything else is
       # rebuilt each time and published straight to Pages, which keeps the repo small.
+      #
+      # The push can lose a race — anything committed while the scan was running
+      # makes the checkout stale and git rejects it. Retry on top of the remote,
+      # and never let a lost race block the publish: a missed history snapshot is
+      # a small gap in one chart, a skipped deploy is the whole site going stale.
       - name: Commit position history
+        continue-on-error: true
         run: |
           git config user.name  "linreg-scanner"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/history-*.json data/universe.csv
-          git diff --staged --quiet || git commit -m "scan: $(date -u '+%Y-%m-%d %H:%M UTC')"
-          git push
+          git diff --staged --quiet && { echo "history unchanged"; exit 0; }
+          git commit -m "scan: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          for try in 1 2 3; do
+            if git push; then exit 0; fi
+            echo "push rejected (attempt $try) — replaying onto the remote"
+            git pull --rebase origin main || {
+              # a conflicted tree would publish JSON full of merge markers
+              git rebase --abort || true
+              git reset --hard origin/main
+              echo "::warning::history commit dropped after a rebase conflict; publishing anyway"
+              exit 1
+            }
+          done
+          echo "::warning::could not push the history update; publishing anyway"
+          exit 1
 
       - name: Assemble the site
         run: |
