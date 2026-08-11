@@ -1,0 +1,13 @@
+# Regenerated on every scan, so there's no reason to carry them in git history —
+# the workflow builds them fresh and publishes them straight to GitHub Pages.
+# (data/universe.csv and data/history-*.json ARE committed: history has to accumulate.)
+data/latest-*.json
+data/series/
+data/alerts.json
+data/meta.json
+
+_site/
+__pycache__/
+*.pyc
+.DS_Store
+LinReg_Scanner_*.html

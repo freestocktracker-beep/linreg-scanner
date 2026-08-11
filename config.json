@@ -1,0 +1,17 @@
+{
+  "_comment": "Controls the email alerts only. The website itself reads nothing from this file. Edit it here on GitHub; the next scan picks it up.",
+
+  "alerts": {
+    "_mode": "all = every stock that crosses into the bottom of its channel. watchlist = only the symbols listed below.",
+    "mode": "all",
+    "watchlist": [],
+
+    "_timeframes": "Which channels to watch: 1mo (monthly), 1wk, 1d. Monthly only is the quiet default; adding 1d will alert far more often.",
+    "timeframes": ["1mo"],
+
+    "_filters": "Applied on top of mode, so you only hear about crossings worth looking at.",
+    "uptrend_only": true,
+    "min_r": 0.7,
+    "max_per_run": 25
+  }
+}
