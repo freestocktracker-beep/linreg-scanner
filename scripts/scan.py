@@ -13,7 +13,9 @@ OHLC, the site can draw candles as well as lines.
 
 Writes, per timeframe TF in {1d, 1wk, 1mo}:
   data/latest-TF.json        ranked rows + summary stats     (small, always loaded)
-  data/series/TF/X.json      last 100 OHLC bars, bucketed by first character
+  data/series/TF/X.json      OHLC bars (SERIES_BARS per timeframe), bucketed by
+                             first character — more than the channel needs, so
+                             the chart can pan back past the regression window
   data/history-TF.json       channel position over time      (committed; accumulates)
   data/alerts.json           new bottom-of-channel crossings, keyed by timeframe
 
@@ -38,6 +40,13 @@ DATA = os.path.join(ROOT, "data")
 
 LENGTH = 100            # regression length, in bars (TradingView default)
 DEVS = 2.0              # standard deviations for the channel bands
+
+# How much price history to publish per timeframe. The channel is always fitted
+# on the last LENGTH bars, but the chart lets you pan back past that, so we ship
+# more bars than the maths needs. These numbers are a size trade-off: the whole
+# bucket file downloads when a reader opens their first chart for that letter,
+# so daily stops at roughly nineteen months rather than the full ten years.
+SERIES_BARS = {"1d": 400, "1wk": 260, "1mo": 120}
 BOTTOM_ZONE = 15.0      # "at/near bottom" threshold, in % of channel height
 WORKERS = 10
 HISTORY_DAYS = 400      # rolling window of position snapshots we keep
@@ -334,7 +343,7 @@ def scan_symbol(meta, timeframes, want_earnings=True):
         m = linreg(c)
         if not m:
             continue
-        k = min(LENGTH, len(c))
+        k = min(SERIES_BARS.get(tf, LENGTH), len(c))
         m.update(
             sym=meta["symbol"], name=meta["name"], sector=meta["sector"],
             sp500=meta["sp500"] == "1", tier=meta["tier"],
