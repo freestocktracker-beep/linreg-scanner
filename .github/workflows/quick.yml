@@ -1,0 +1,65 @@
+name: Quick refresh
+
+# Every 15 minutes during US market hours (13:00–20:59 UTC ≈ 9:00–4:59 ET in
+# summer; an hour later in winter — GitHub cron doesn't follow daylight saving).
+# Grafts live quotes onto the last full scan and republishes: ~70 requests and
+# ~1 minute, versus ~1,360 requests for a full scan. Nothing is committed and
+# no alerts fire — the full scans in scan.yml keep doing that.
+on:
+  schedule:
+    - cron: "*/15 13-20 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# shares one queue with the full scan so two deploys never race
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  quick:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Refresh from live quotes
+        id: q
+        run: |
+          set +e
+          python3 scripts/quick.py
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "publish=1" >> "$GITHUB_OUTPUT"
+          elif [ "$code" -eq 3 ]; then
+            echo "publish=0" >> "$GITHUB_OUTPUT"
+            echo "site not deployed yet — run 'Scan and publish' once first"
+          else
+            exit "$code"
+          fi
+
+      - name: Assemble the site
+        if: steps.q.outputs.publish == '1'
+        run: |
+          rm -rf _site
+          mkdir -p _site/data
+          cp -r site/. _site/
+          cp -r data/. _site/data/
+          rm -f _site/data/universe.csv
+          touch _site/.nojekyll
+
+      - uses: actions/configure-pages@v5
+        if: steps.q.outputs.publish == '1'
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.q.outputs.publish == '1'
+        with:
+          path: _site
+      - uses: actions/deploy-pages@v4
+        if: steps.q.outputs.publish == '1'

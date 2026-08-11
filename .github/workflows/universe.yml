@@ -1,0 +1,31 @@
+name: Refresh the ticker universe
+
+# Index membership and market caps drift. This rebuilds data/universe.csv on the
+# first of each month; the next scan picks it up automatically.
+on:
+  schedule:
+    - cron: "30 8 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  universe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Rebuild universe.csv
+        env:
+          MIN_MARKET_CAP: ${{ vars.MIN_MARKET_CAP || '5e9' }}
+        run: python3 scripts/universe.py
+      - name: Commit
+        run: |
+          git config user.name  "linreg-scanner"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/universe.csv
+          git diff --staged --quiet || git commit -m "universe: monthly refresh"
+          git push

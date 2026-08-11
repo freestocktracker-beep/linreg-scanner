@@ -1,0 +1,114 @@
+name: Scan and publish
+
+# Times are UTC. These land at roughly 10am / 2pm / 5pm New York during EDT
+# (9am / 1pm / 4pm during EST), Monday to Friday.
+on:
+  schedule:
+    - cron: "0 14 * * 1-5"
+    - cron: "0 18 * * 1-5"
+    - cron: "0 21 * * 1-5"
+  workflow_dispatch:          # the "Run workflow" button
+  push:
+    branches: [main]
+    paths: ["site/**", "scripts/**", ".github/workflows/scan.yml"]
+
+permissions:
+  contents: write             # commit the refreshed data back
+  pages: write                # publish the site
+  id-token: write
+  issues: write               # alert notifications
+
+# shares one queue with the quick refresh so two deploys never race
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run the scan
+        env:
+          SCAN_TIMEFRAMES: ${{ vars.SCAN_TIMEFRAMES || '1d,1wk,1mo' }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python3 scripts/scan.py
+
+      # Only the position history has to survive between runs; everything else is
+      # rebuilt each time and published straight to Pages, which keeps the repo small.
+      - name: Commit position history
+        run: |
+          git config user.name  "linreg-scanner"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/history-*.json data/universe.csv
+          git diff --staged --quiet || git commit -m "scan: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push
+
+      - name: Assemble the site
+        run: |
+          rm -rf _site
+          mkdir -p _site/data
+          cp -r site/. _site/
+          cp -r data/. _site/data/
+          rm -f _site/data/universe.csv
+          touch _site/.nojekyll
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      # Opens a GitHub issue when something new hits the bottom of its channel.
+      # GitHub emails you about issues in your own repo, so this needs no SMTP
+      # setup. Turn it off by unwatching the repo or deleting this step.
+      - name: Notify on new bottom-band crossings
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const a = JSON.parse(fs.readFileSync('data/alerts.json', 'utf8'));
+            if (a.seeded) { core.info('first run — history was just seeded, not notifying'); return; }
+            let cfg = { alerts: {} };
+            try { cfg = JSON.parse(fs.readFileSync('config.json', 'utf8')); } catch (e) {}
+            const c = cfg.alerts || {};
+            const watch = new Set((c.watchlist || []).map(s => s.toUpperCase()));
+            const names = { '1d': 'Daily', '1wk': 'Weekly', '1mo': 'Monthly' };
+            const want = c.timeframes && c.timeframes.length ? c.timeframes : [a.default_timeframe || '1mo'];
+            const cap = c.max_per_run ?? 25;
+            const url = `https://${context.repo.owner}.github.io/${context.repo.repo}/`;
+
+            const sections = [];
+            let total = 0;
+            for (const tf of want) {
+              const hits = (a.alerts[tf] || []).filter(x =>
+                (c.mode !== 'watchlist' || watch.has(x.sym.toUpperCase())) &&
+                (!c.uptrend_only || x.dir === 'Uptrend') &&
+                Math.abs(x.r) >= (c.min_r ?? 0)
+              ).slice(0, cap);
+              if (!hits.length) continue;
+              total += hits.length;
+              sections.push([
+                `### ${names[tf] || tf} channel`, '',
+                '| Symbol | Company | Position | Was | R | What happened |',
+                '|---|---|---|---|---|---|',
+                ...hits.map(h => `| [${h.sym}](${url}#${h.sym}) | ${h.name} | ${h.pos}% | ${h.prev}% | ${h.r} | ${h.kind} |`),
+                '',
+              ].join('\n'));
+            }
+            if (!total) { core.info('nothing new'); return; }
+            await github.rest.issues.create({
+              ...context.repo,
+              title: `${total} stock${total > 1 ? 's' : ''} hit the bottom of the channel — ${a.asof}`,
+              body: [`Found on the ${a.asof} scan:`, '', ...sections, `[Open the scanner](${url})`].join('\n'),
+              labels: ['alert'],
+            });
