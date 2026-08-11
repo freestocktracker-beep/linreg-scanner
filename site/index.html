@@ -210,7 +210,7 @@ th.stcol,td.stcol{padding-left:4px;padding-right:4px;width:34px}
 
 dialog{
   border:1px solid var(--hair);border-radius:14px;background:var(--surface);color:var(--ink);
-  padding:0;width:min(940px,96vw);box-shadow:var(--shadow)
+  padding:0;width:min(1120px,96vw);box-shadow:var(--shadow)
 }
 dialog::backdrop{background:rgba(11,11,11,.45)}
 .mhead{display:flex;align-items:flex-start;gap:10px;padding:16px 18px 10px}
@@ -218,35 +218,42 @@ dialog::backdrop{background:rgba(11,11,11,.45)}
 .mbody{padding:0 18px 18px}
 /* twelve stats on a 6-column grid — and 12 divides evenly by 6, 4, 3 and 2, so
    every breakpoint stays a full rectangle instead of a ragged last row */
-.kv{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:1fr;gap:8px;margin:12px 0 0}
+/* Both card rows are centre-aligned and deliberately shallow: this block sits
+   between the headline and the chart, so every pixel it costs pushes the chart
+   below the fold. Label, number, note — nothing else. */
+.kv{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:1fr;gap:6px;margin:10px 0 0}
 @media (max-width:1000px){ .kv{grid-template-columns:repeat(4,minmax(0,1fr))} }
 @media (max-width:760px){ .kv{grid-template-columns:repeat(3,minmax(0,1fr))} }
 @media (max-width:540px){ .kv{grid-template-columns:repeat(2,minmax(0,1fr))} }
 .kv > div{
-  background:var(--surface-2);border-radius:9px;padding:9px 11px;
-  border-left:2px solid transparent;display:flex;flex-direction:column;min-height:76px
+  background:var(--surface-2);border-radius:8px;padding:6px 8px 7px;
+  border-left:2px solid transparent;display:flex;flex-direction:column;
+  align-items:center;text-align:center;min-height:0
 }
-.kv .k{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em}
-.kv .v{font-size:15px;font-variant-numeric:tabular-nums;line-height:1.32;margin-top:2px}
-.kv .b{color:var(--muted);font-size:11px;margin-top:auto;padding-top:4px;font-variant-numeric:tabular-nums}
-.kv .meter{width:100%;margin-top:4px}
-.kvmore{display:block;width:100%;margin:8px 0 4px;padding:6px;background:none;
-  border:1px dashed var(--hair);border-radius:9px;color:var(--muted);
-  font:inherit;font-size:12px;cursor:pointer}
+.kv .k{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.04em;
+  line-height:1.25;display:flex;align-items:center;justify-content:center}
+.kv .k .info{margin-left:4px}
+.kv .v{font-size:15px;font-variant-numeric:tabular-nums;line-height:1.2;margin-top:1px}
+.kv .b{color:var(--muted);font-size:10.5px;line-height:1.3;margin-top:auto;padding-top:3px;
+  font-variant-numeric:tabular-nums}
+.kv .meter{width:100%;margin-top:3px}
+.kvmore{display:block;width:100%;margin:6px 0 2px;padding:4px;background:none;
+  border:1px dashed var(--hair);border-radius:8px;color:var(--muted);
+  font:inherit;font-size:11.5px;cursor:pointer}
 .kvmore:hover{color:var(--accent-text);border-color:var(--accent)}
 
 /* benchmark cards — the stock and the market, same metric side by side */
-.bench{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:8px}
-.bench > div{background:var(--surface-2);border-radius:9px;padding:9px 11px;
-  border-left:2px solid var(--hair)}
+.bench{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;margin-top:6px}
+.bench > div{background:var(--surface-2);border-radius:8px;padding:6px 10px 7px;
+  border-left:2px solid var(--hair);text-align:center}
 .bench > div.self{border-left-color:var(--accent);background:var(--wash)}
 .bench > div.act:hover{background:var(--surface);box-shadow:inset 0 0 0 1px var(--axis)}
-.bench .t{display:flex;align-items:baseline;gap:6px}
-.bench .s{font-weight:650;font-size:13px}
-.bench .n{color:var(--ink-2);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bench .bp{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:3px}
-.bench .bsub{color:var(--muted);font-size:11px;padding-top:5px}
-.bench .meter{width:100%;margin-top:6px}
+.bench .t{display:flex;align-items:baseline;justify-content:center;gap:6px}
+.bench .s{font-weight:650;font-size:12.5px}
+.bench .n{color:var(--ink-2);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bench .bp{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px;line-height:1.2}
+.bench .bsub{color:var(--muted);font-size:10.5px;line-height:1.3;padding-top:3px}
+.bench .meter{width:100%;margin-top:4px}
 .legend{display:flex;gap:14px;align-items:center;flex-wrap:wrap;color:var(--ink-2);font-size:12px;margin:2px 0 6px}
 .legend i{display:inline-block;width:14px;height:2px;border-radius:1px;margin-right:5px;vertical-align:middle}
 .navbtns{display:flex;gap:6px;align-items:center}
@@ -306,7 +313,8 @@ dialog::backdrop{background:rgba(11,11,11,.45)}
 .pchip b{font-weight:700}
 .crow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 0 2px}
 .charttitle{font-size:13px;font-weight:600}
-.charthint{color:var(--ink-2);font-size:12px;margin-bottom:6px}
+.charttitle.bh{margin-top:9px}
+.charthint{color:var(--ink-2);font-size:11.5px;margin-bottom:4px}
 svg{display:block;width:100%;height:auto;touch-action:none}
 .mfoot{display:flex;gap:8px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--grid);margin-top:16px}
 
@@ -971,7 +979,13 @@ const MIN_BARS = 15;        // hardest zoom-in
 
 function chartPanel(d, ser) {
   const n = ser.c.length;
-  let i0 = 0, i1 = n - 1;                       // visible bar range, inclusive
+  // The channel is fitted on the last `winBars` bars only. Everything to the
+  // left of `cs` is extra history you can pan into — drawn as plain price, with
+  // no bands, because the regression genuinely says nothing about it.
+  const winBars = Math.min(d.bars || 100, n);
+  const cs = n - winBars;                       // first bar the channel covers
+  const DEF = [cs, n - 1];                      // the view we open on and reset to
+  let i0 = DEF[0], i1 = DEF[1];                 // visible bar range, inclusive
   const host = el("div");
   const priceHost = el("div"), wrHost = el("div");
   const readout = el("div", "readout");
@@ -1008,7 +1022,7 @@ function chartPanel(d, ser) {
     // prediction-interval half-width h bars past the last close: the standard
     // linear-regression formula, so the cone widens honestly with distance
     const seAt = h => {
-      const N = n, mx = (N - 1) / 2, Sxx = N * (N * N - 1) / 12;
+      const N = winBars, mx = (N - 1) / 2, Sxx = N * (N * N - 1) / 12;
       return dev * Math.sqrt(1 + 1 / N + Math.pow((N - 1 + h) - mx, 2) / Sxx);
     };
     const coneEnd = () => (i1 + pad()) - (n - 1);      // horizon in bars, may be ≤0
@@ -1018,7 +1032,9 @@ function chartPanel(d, ser) {
       min = Math.min(min, candles ? ser.l[i] : ser.c[i]);
       max = Math.max(max, candles ? ser.h[i] : ser.c[i]);
     }
-    for (const i of [i0, i1 + pad()]) { min = Math.min(min, lo(i)); max = Math.max(max, hi(i)); }
+    // only let the bands stretch the y-scale where they actually exist
+    const chVis = i1 + pad() > cs, ci = Math.max(i0, cs);
+    if (chVis) for (const i of [ci, i1 + pad()]) { min = Math.min(min, lo(i)); max = Math.max(max, hi(i)); }
     if (S.fc && b === n - 1 && coneEnd() > 0) {
       const hE = coneEnd(), m2 = midAt(n - 1 + hE), s2 = 2 * seAt(hE);
       min = Math.min(min, m2 - s2); max = Math.max(max, m2 + s2);
@@ -1037,24 +1053,36 @@ function chartPanel(d, ser) {
       svg.append(t);
     }
 
-    // the channel: filled body over real bars, lighter over the projection
-    const xr = X(n - 1), xEnd = X(i1 + pad()), xs = X(i0);
+    // the channel: filled body over real bars, lighter over the projection.
+    // It starts at `cs`, never earlier — panning left runs off the end of it.
+    const xr = X(n - 1), xEnd = X(i1 + pad()), xs = X(ci);
     const poly = (x1, x2, o) => mk("path", {
       d: `M${x1},${Y(hi(barAt(x1)))} L${x2},${Y(hi(barAt(x2)))} L${x2},${Y(lo(barAt(x2)))} L${x1},${Y(lo(barAt(x1)))} Z`,
       fill: css("--band"), opacity: o });
-    svg.append(poly(xs, Math.min(xr, xEnd), 1));
-    if (xEnd > xr) svg.append(poly(xr, xEnd, .45));
-
-    // bands as real reference lines, labelled at the right edge on a surface
-    // backing so they stay readable over the projection and the earnings rule
     const labels = [];
-    for (const [f, colour, label] of [[hi, "--dv-hi1", "Upper"], [lo, "--dv-lo1", "Lower"]]) {
-      svg.append(mk("line", { x1: xs, x2: xEnd, y1: Y(f(i0)), y2: Y(f(i1 + pad())),
-        stroke: css(colour), "stroke-width": 2, "stroke-linecap": "round" }));
-      labels.push([label === "Upper" ? d.upper : d.lower, colour, label, Y(f(i1 + pad()))]);
+    if (chVis) {
+      svg.append(poly(xs, Math.min(xr, xEnd), 1));
+      if (xEnd > xr) svg.append(poly(xr, xEnd, .45));
+
+      // bands as real reference lines, labelled at the right edge on a surface
+      // backing so they stay readable over the projection and the earnings rule
+      for (const [f, colour, label] of [[hi, "--dv-hi1", "Upper"], [lo, "--dv-lo1", "Lower"]]) {
+        svg.append(mk("line", { x1: xs, x2: xEnd, y1: Y(f(ci)), y2: Y(f(i1 + pad())),
+          stroke: css(colour), "stroke-width": 2, "stroke-linecap": "round" }));
+        labels.push([label === "Upper" ? d.upper : d.lower, colour, label, Y(f(i1 + pad()))]);
+      }
+      svg.append(mk("line", { x1: xs, x2: xEnd, y1: Y(midAt(ci)), y2: Y(midAt(i1 + pad())),
+        stroke: css("--muted"), "stroke-width": 1 }));
+
+      // where the channel window begins, marked only once you've panned past it
+      if (i0 < cs - 0.5 && cs > 0) {
+        svg.append(mk("line", { x1: xs, x2: xs, y1: PT, y2: H - PB, stroke: css("--axis"),
+          "stroke-width": 1, "stroke-dasharray": "3 3" }));
+        const cl = mk("text", { x: xs + 5, y: PT + 11, fill: css("--muted"), "font-size": 10 });
+        cl.textContent = `channel starts · ${winBars} bars`;
+        svg.append(cl);
+      }
     }
-    svg.append(mk("line", { x1: xs, x2: xEnd, y1: Y(midAt(i0)), y2: Y(midAt(i1 + pad())),
-      stroke: css("--muted"), "stroke-width": 1 }));
 
     // price
     const bw = Math.max(1.5, Math.min(14, step() - 2));
@@ -1297,7 +1325,7 @@ function chartPanel(d, ser) {
     };
     host2.addEventListener("pointerup", end);
     host2.addEventListener("pointercancel", end);
-    host2.addEventListener("dblclick", () => { i0 = 0; i1 = n - 1; draw(); });
+    host2.addEventListener("dblclick", () => { i0 = DEF[0]; i1 = DEF[1]; draw(); });
     host2.addEventListener("wheel", ev => {
       ev.preventDefault();
       const svg = host2.querySelector("svg");
@@ -1343,17 +1371,23 @@ function chartPanel(d, ser) {
   const zoomLabel = el("span", "hint");
   const mkBtn = (t, title, fn) => { const b = el("button", "btn sm", t); b.title = title; b.onclick = fn; return b; };
   bar.append(
-    el("span", "hint", "Drag to pan · scroll to zoom · double-click to reset"),
+    el("span", "hint", "Drag left for older bars · scroll to zoom · double-click to reset"),
     el("div", "spacer"),
     zoomLabel,
   );
   // range presets, TradingView's bottom-row idea folded into the toolbar
-  const PRESETS = { "1d": [["1M", 21], ["3M", 63]], "1wk": [["3M", 13], ["1Y", 52]], "1mo": [["1Y", 12], ["5Y", 60]] };
+  const PRESETS = {
+    "1d":  [["1M", 21], ["3M", 63], ["1Y", 252]],
+    "1wk": [["6M", 26], ["1Y", 52], ["3Y", 156]],
+    "1mo": [["1Y", 12], ["3Y", 36], ["5Y", 60]],
+  };
   for (const [lab, bars2] of PRESETS[S.tf] || []) {
     if (n > bars2) bar.append(mkBtn(lab, "Last " + lab, () => { i1 = n - 1; i0 = n - bars2; draw(); }));
   }
   bar.append(
-    mkBtn("All", "Show the whole window", () => { i0 = 0; i1 = n - 1; draw(); }),
+    mkBtn("Channel", `Back to the ${winBars} bars the channel is fitted on`,
+      () => { i0 = DEF[0]; i1 = DEF[1]; draw(); }),
+    mkBtn("All", `Every bar held — ${n} in total`, () => { i0 = 0; i1 = n - 1; draw(); }),
     mkBtn("−", "Zoom out", () => zoom(1.3, (i0 + i1) / 2)),
     mkBtn("+", "Zoom in", () => zoom(1 / 1.3, (i0 + i1) / 2)),
   );
@@ -1520,7 +1554,7 @@ async function openSym(sym) {
   const stats = [
     ["Price", money(d.price),
       d.hi52 == null ? `${away(d.mid)} vs regression`
-        : d.hi52 >= -0.5 ? "at its 52-week high" : `${fmt(-d.hi52, 1)}% below 52-wk high`,
+        : d.hi52 >= -0.5 ? "at its 52-week high" : `${fmt(-d.hi52, 1)}% off 52-wk high`,
       null, null, 0, DEFS.price],
     ["Position in channel", pct(d.pos),
       sa.pos != null ? `sector ${pct(sa.pos)} · all ${pct(agg.all.pos)}` : `all ${pct(agg.all.pos)}`,
@@ -1581,7 +1615,7 @@ async function openSym(sym) {
   const marks = [etf, benchOf("SPY"), benchOf("QQQ")]
     .filter(b => b && b.sym !== d.sym).slice(0, 3);
   if (marks.length) {
-    const bt = el("div", "charttitle", "How does this compare to the market?");
+    const bt = el("div", "charttitle bh", "How does this compare to the market?");
     bt.append(infoIcon(DEFS.bench));
     body.append(bt);
     body.append(el("div", "charthint",
