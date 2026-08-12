@@ -210,7 +210,7 @@ th.stcol,td.stcol{padding-left:4px;padding-right:4px;width:34px}
 
 dialog{
   border:1px solid var(--hair);border-radius:14px;background:var(--surface);color:var(--ink);
-  padding:0;width:min(1120px,96vw);box-shadow:var(--shadow)
+  padding:0;width:min(1220px,96vw);box-shadow:var(--shadow)
 }
 dialog::backdrop{background:rgba(11,11,11,.45)}
 .mhead{display:flex;align-items:flex-start;gap:10px;padding:16px 18px 10px}
@@ -230,16 +230,19 @@ dialog::backdrop{background:rgba(11,11,11,.45)}
   border-left:2px solid transparent;display:flex;flex-direction:column;
   align-items:center;text-align:center;min-height:0
 }
-.kv .k{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.04em;
+/* The label stays small and quiet; the number is the thing you came to read, so
+   it gets the size. Notes under the number are data too — 12px, not 10. */
+.kv .k{color:var(--muted);font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;
   line-height:1.25;display:flex;align-items:center;justify-content:center}
 .kv .k .info{margin-left:4px}
-.kv .v{font-size:15px;font-variant-numeric:tabular-nums;line-height:1.2;margin-top:1px}
-.kv .b{color:var(--muted);font-size:10.5px;line-height:1.3;margin-top:auto;padding-top:3px;
+.kv .v{font-size:20px;font-variant-numeric:tabular-nums;line-height:1.15;margin-top:2px;
+  letter-spacing:-.01em}
+.kv .b{color:var(--ink-2);font-size:12px;line-height:1.3;margin-top:auto;padding-top:4px;
   font-variant-numeric:tabular-nums}
-.kv .meter{width:100%;margin-top:3px}
-.kvmore{display:block;width:100%;margin:6px 0 2px;padding:4px;background:none;
+.kv .meter{width:100%;margin-top:4px}
+.kvmore{display:block;width:100%;margin:6px 0 2px;padding:5px;background:none;
   border:1px dashed var(--hair);border-radius:8px;color:var(--muted);
-  font:inherit;font-size:11.5px;cursor:pointer}
+  font:inherit;font-size:12px;cursor:pointer}
 .kvmore:hover{color:var(--accent-text);border-color:var(--accent)}
 
 /* benchmark cards — the stock and the market, same metric side by side */
@@ -249,11 +252,12 @@ dialog::backdrop{background:rgba(11,11,11,.45)}
 .bench > div.self{border-left-color:var(--accent);background:var(--wash)}
 .bench > div.act:hover{background:var(--surface);box-shadow:inset 0 0 0 1px var(--axis)}
 .bench .t{display:flex;align-items:baseline;justify-content:center;gap:6px}
-.bench .s{font-weight:650;font-size:12.5px}
-.bench .n{color:var(--ink-2);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bench .bp{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px;line-height:1.2}
-.bench .bsub{color:var(--muted);font-size:10.5px;line-height:1.3;padding-top:3px}
-.bench .meter{width:100%;margin-top:4px}
+.bench .s{font-weight:650;font-size:14px}
+.bench .n{color:var(--ink-2);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bench .bp{font-size:23px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px;
+  line-height:1.2;letter-spacing:-.01em}
+.bench .bsub{color:var(--ink-2);font-size:12px;line-height:1.3;padding-top:4px}
+.bench .meter{width:100%;margin-top:5px}
 .legend{display:flex;gap:14px;align-items:center;flex-wrap:wrap;color:var(--ink-2);font-size:12px;margin:2px 0 6px}
 .legend i{display:inline-block;width:14px;height:2px;border-radius:1px;margin-right:5px;vertical-align:middle}
 .navbtns{display:flex;gap:6px;align-items:center}
@@ -301,7 +305,7 @@ dialog::backdrop{background:rgba(11,11,11,.45)}
 .fcgrid{display:grid;grid-template-columns:auto auto auto 1fr;gap:0 14px;margin:8px 0 4px}
 .fcgrid .fh{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
   padding-bottom:3px;border-bottom:1px solid var(--hair);margin-bottom:3px}
-.fcgrid .fd{font-size:12.5px;color:var(--ink-2);padding:3px 0;display:flex;
+.fcgrid .fd{font-size:13.5px;color:var(--ink-2);padding:4px 0;display:flex;
   align-items:baseline;gap:6px}
 .fcgrid .fd.num{font-variant-numeric:tabular-nums;color:var(--ink)}
 .fcgrid .fd.up{color:var(--up)}
@@ -1768,15 +1772,15 @@ async function openSym(sym) {
         : d.hi52 >= -0.5 ? "at its 52-week high" : `${fmt(-d.hi52, 1)}% off 52-wk high`,
       null, null, 0, DEFS.price],
     ["Position in channel", pct(d.pos),
-      sa.pos != null ? `sector ${pct(sa.pos)} · all ${pct(agg.all.pos)}` : `all ${pct(agg.all.pos)}`,
+      sa.pos != null ? `sector ${fmt(sa.pos, 0)}% · all ${fmt(agg.all.pos, 0)}%` : `all ${fmt(agg.all.pos, 0)}%`,
       zoneColor(d.pos), zoneColor(d.pos), 0, DEFS.pos],
     ["Trend", (d.dir === "Uptrend" ? "▲ " : "▼ ") + d.dir,
       sa.up != null ? `${sa.up}% of sector rising` : "",
       d.dir === "Uptrend" ? "var(--up)" : "var(--down)",
       d.dir === "Uptrend" ? "var(--up)" : "var(--down)", 0, DEFS.trend],
-    ["Channel swings", String(d.swings), "top ↔ bottom band trips", null, null, 0, DEFS.swings],
+    ["Channel swings", String(d.swings), "band-to-band trips", null, null, 0, DEFS.swings],
     ["Days till earnings", eDays[0],
-      d.earn ? `${eDays[1]} · ${longDate(d.earn)}` : eDays[1],
+      d.earn ? longDate(d.earn) : eDays[1],
       d.earn ? "var(--b2)" : null,
       eNum != null && eNum >= 0 && eNum <= 7 ? "var(--soon)" : null, 0, DEFS.earn],
     ["Lower band", money(d.lower), `${away(d.lower)} away`, "var(--dv-lo1)", null, 0, DEFS.lower],
