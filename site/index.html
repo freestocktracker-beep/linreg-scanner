@@ -196,11 +196,18 @@ th.stcol,td.stcol{padding-left:4px;padding-right:4px;width:34px}
 .thin{color:var(--muted);font-size:9.5px;text-transform:uppercase;
   letter-spacing:.08em;margin-left:5px;border:1px solid var(--hair);border-radius:4px;padding:1px 4px}
 
+/* Reads like the chart turned on its side: low prices left, high prices right.
+   The end caps carry the SAME blue and red as the chart's two bands, so which
+   end is the floor and which the ceiling needs no label. */
 .meter{position:relative;width:104px;height:16px;display:inline-block;vertical-align:-4px}
 .meter i{position:absolute;left:0;right:0;top:7px;height:2px;background:var(--grid)}
 .meter u{position:absolute;left:0;width:15%;top:3px;bottom:3px;background:var(--tint-lo)}
 .meter b{position:absolute;top:2px;bottom:2px;width:2px;background:var(--series);border-radius:1px}
 .meter s{position:absolute;top:5px;bottom:5px;width:1px;background:var(--axis)}
+.meter::before,.meter::after{content:"";position:absolute;top:1px;bottom:1px;width:2.5px;
+  border-radius:1px;opacity:.85}
+.meter::before{left:0;background:var(--dv-lo1)}
+.meter::after{right:0;background:var(--dv-hi1)}
 
 .more{display:block;width:100%;padding:12px;background:var(--surface);border:0;
   border-top:1px solid var(--grid);color:var(--accent-text);font:inherit;cursor:pointer}
@@ -302,7 +309,7 @@ dialog::backdrop{background:rgba(11,11,11,.45)}
 .conf[data-lv=high] b{color:var(--accent-text)}
 
 /* forecast checkpoints — the same numbers as the dots on the chart */
-.fcgrid{display:grid;grid-template-columns:auto auto auto 1fr;gap:0 14px;margin:8px 0 4px}
+.fcgrid{display:grid;grid-template-columns:auto auto auto auto auto 1fr;gap:0 14px;margin:8px 0 4px}
 .fcgrid .fh{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
   padding-bottom:3px;border-bottom:1px solid var(--hair);margin-bottom:3px}
 .fcgrid .fd{font-size:13.5px;color:var(--ink-2);padding:4px 0;display:flex;
@@ -561,7 +568,7 @@ async function seriesFor(tf, sym) {
 
 const DEFS = {
   price: "The stock's last price when the scan ran, and how far it sits below its highest point of the past year.",
-  pos: "The main number here. Where the price sits inside its own trend channel: 0% means right on the floor, 100% right on the ceiling. Negative means it has fallen through the floor — the situation this scanner hunts for.",
+  pos: "The main number here. Where the price sits inside its own trend channel: 0% means right on the floor, 100% right on the ceiling. Negative means it has fallen through the floor — the situation this scanner hunts for. Read the little bar like the chart laid on its side: the blue cap on the LEFT is the lower band, the red cap on the RIGHT is the upper band, so a marker near the left end is a stock down at its floor.",
   trend: "The direction of the trend line drawn through the last 100 bars — rising or falling.",
   swings: "How many times the price has travelled from the top of its channel all the way down to the bottom. More round trips mean the channel has actually been respected, so “at the floor” has meant something historically.",
   earn: "Days until the company's next scheduled earnings report. Prices often jump on earnings day, so a nearby date adds risk to any setup.",
@@ -1102,6 +1109,12 @@ const FC_MILES = {
   "1mo": [[3, "3 months"], [6, "6 months"], [12, "1 year"]],
 };
 const DAYS_PER_BAR = { "1d": 1.45, "1wk": 7, "1mo": 30.44 };
+
+/* The projection is drawn as three nested bands rather than one cone, so the
+   picture says how sure it is at every distance: the narrow inner band is where
+   price lands half the time, the outer one is the 95% case. z-scores for a
+   two-sided normal interval — the fit has ~100 observations, so t ≈ z. */
+const FC_BANDS = [[1.960, "95%"], [1.282, "80%"], [0.674, "50%"]];
 const miles = () => FC_MILES[S.tf] || FC_MILES["1mo"];
 const fcReach = () => miles()[miles().length - 1][0];
 
@@ -1109,11 +1122,14 @@ const fcReach = () => miles()[miles().length - 1][0];
    whether we have a full window, and how tight the statistical range still is at
    the far checkpoint. Deliberately not called "probability". */
 function fcConfidence(d, seH, hMax) {
-  const fit = Math.min(1, Math.abs(d.r || 0));
-  const hist = Math.min(1, (d.bars || 0) / 100);
+  const fit = Math.min(1, Math.abs(d.r || 0));      // how straight the trend has been
+  const hist = Math.min(1, (d.bars || 0) / 100);    // do we have a full window
   const spread = d.price ? (2 * seH(hMax)) / d.price : 1;
-  const tight = 1 - Math.min(1, spread / 0.30);
-  const score = 0.45 * fit + 0.15 * hist + 0.40 * tight;
+  const tight = 1 - Math.min(1, spread / 0.30);     // how narrow the range still is
+  // fit MULTIPLIES rather than adds: extending a line that never described the
+  // price is worthless however tidy the arithmetic around it looks. A stock with
+  // R near zero has to score near zero, and an additive formula won't do that.
+  const score = fit * (0.60 + 0.25 * tight + 0.15 * hist);
   return {
     score, fit, hist, spread, tight,
     pips: score >= 0.65 ? 3 : score >= 0.42 ? 2 : 1,
@@ -1138,7 +1154,7 @@ function chartPanel(d, ser) {
   // with the forecast on, the empty space to the right has to actually reach the
   // last checkpoint — but never swallow more than a third of the chart
   const pad = () => S.fc
-    ? Math.max(4, Math.min(Math.round(fcReach() * 1.12), Math.round((i1 - i0 + 1) * 0.5)))
+    ? Math.max(4, Math.min(Math.round(fcReach() * 1.32), Math.round((i1 - i0 + 1) * 0.5)))
     : Math.max(4, Math.round((i1 - i0 + 1) * PAD_FRAC));
   const span = () => (i1 + pad()) - i0;         // x domain width, in bars
   const dev = (d.upper - d.lower) / 4;
@@ -1194,7 +1210,7 @@ function chartPanel(d, ser) {
     const chVis = i1 + pad() > cs, ci = Math.max(i0, cs);
     if (chVis) for (const i of [ci, i1 + pad()]) { min = Math.min(min, lo(i)); max = Math.max(max, hi(i)); }
     if (S.fc && b === n - 1 && coneEnd() > 0) {
-      const hE = coneEnd(), m2 = midAt(n - 1 + hE), s2 = 2 * seAt(hE);
+      const hE = coneEnd(), m2 = midAt(n - 1 + hE), s2 = FC_BANDS[0][0] * seAt(hE);
       min = Math.min(min, m2 - s2); max = Math.max(max, m2 + s2);
     }
     const padY = (max - min) * 0.07 || 1; min -= padY; max += padY;
@@ -1312,22 +1328,37 @@ function chartPanel(d, ser) {
       if (S.fc && coneEnd() > 0.5) {
         const hE = coneEnd();
         const steps = 24;
-        let up2 = "", lo2p = "";
-        for (let k2 = 0; k2 <= steps; k2++) {
-          const h = hE * k2 / steps;
-          const x = X(n - 1 + h), m2 = midAt(n - 1 + h), s2 = 2 * seAt(h);
-          up2 += (k2 ? "L" : "M") + x + "," + Y(m2 + s2);
-          lo2p = "L" + x + "," + Y(m2 - s2) + lo2p;
-        }
-        svg.append(mk("path", { d: up2 + lo2p + "Z", fill: css("--wash") }));
-        for (const sign of [1, -1]) {
-          let pth = "";
+        // widest first so the narrower, more likely bands stack darker on top
+        for (const [z, lbl] of FC_BANDS) {
+          let up2 = "", lo2p = "";
           for (let k2 = 0; k2 <= steps; k2++) {
             const h = hE * k2 / steps;
-            pth += (k2 ? "L" : "M") + X(n - 1 + h) + "," + Y(midAt(n - 1 + h) + sign * 2 * seAt(h));
+            const x = X(n - 1 + h), m2 = midAt(n - 1 + h), s2 = z * seAt(h);
+            up2 += (k2 ? "L" : "M") + x + "," + Y(m2 + s2);
+            lo2p = "L" + x + "," + Y(m2 - s2) + lo2p;
           }
-          svg.append(mk("path", { d: pth, fill: "none", stroke: css("--accent"),
-            "stroke-width": 1, opacity: .5 }));
+          svg.append(mk("path", { d: up2 + lo2p + "Z", fill: css("--accent"), opacity: .085 }));
+          // outline just the outer edge, and label every band where it ends
+          if (z === FC_BANDS[0][0]) {
+            for (const sign of [1, -1]) {
+              let pth = "";
+              for (let k2 = 0; k2 <= steps; k2++) {
+                const h = hE * k2 / steps;
+                pth += (k2 ? "L" : "M") + X(n - 1 + h) + "," + Y(midAt(n - 1 + h) + sign * z * seAt(h));
+              }
+              svg.append(mk("path", { d: pth, fill: "none", stroke: css("--accent"),
+                "stroke-width": 1, opacity: .45 }));
+            }
+          }
+          // label the LOWER edge: checkpoint prices always sit above their dots,
+          // so the underside of the fan is the one place nothing else competes for
+          const ey = Y(midAt(n - 1 + hE) - z * seAt(hE));
+          if (ey > PT + 7 && ey < H - PB - 7) {
+            const et = mk("text", { x: X(n - 1 + hE) - 3, y: ey - 3, "text-anchor": "end",
+              fill: css("--muted"), "font-size": 9 });
+            et.textContent = lbl;
+            svg.append(et);
+          }
         }
         svg.append(mk("line", { x1: X(n - 1), y1: Y(midAt(n - 1)), x2: X(n - 1 + hE),
           y2: Y(midAt(n - 1 + hE)), stroke: css("--accent"), "stroke-width": 1.5,
@@ -1569,6 +1600,7 @@ function chartPanel(d, ser) {
     mkBtn("−", "Zoom out", () => zoom(1.3, (i0 + i1) / 2)),
     mkBtn("+", "Zoom in", () => zoom(1 / 1.3, (i0 + i1) / 2)),
   );
+  let fcKey;                       // the legend entry, built with the key below
   const fcBtn = el("button", "btn sm", "✦ Forecast");
   fcBtn.setAttribute("aria-pressed", String(S.fc));
   attachTip(fcBtn, DEFS.outlook);
@@ -1577,6 +1609,7 @@ function chartPanel(d, ser) {
     store.set("linreg.fc", S.fc);
     fcBtn.setAttribute("aria-pressed", String(S.fc));
     outlookEl.hidden = !S.fc;
+    if (fcKey) fcKey.hidden = !S.fc;
     draw();
   };
   bar.append(fcBtn);
@@ -1591,27 +1624,30 @@ function chartPanel(d, ser) {
       return dev * Math.sqrt(1 + 1 / N + Math.pow((N - 1 + h) - mx, 2) / Sxx);
     };
     const ms = miles();
-    const conf = fcConfidence(d, seH, ms[ms.length - 1][0]);
     const dateLong = h => new Date(lastBarMs() + h * (DAYS_PER_BAR[S.tf] || 30.44) * 864e5)
       .toLocaleDateString(undefined, S.tf === "1mo"
         ? { month: "short", year: "numeric", timeZone: "UTC" }
         : { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 
     const head = el("div", "oh");
-    head.append("Trend forecast", infoIcon(DEFS.outlook), el("div", "spacer"));
-    const cf = el("span", "conf");
-    cf.append(el("span", "cw", "Confidence"));
-    const pipbox = el("span", "pips");
-    for (let p = 1; p <= 3; p++) pipbox.append(el("i", p <= conf.pips ? "on" : ""));
-    cf.append(pipbox, el("b", "", conf.label));
-    cf.dataset.lv = conf.label.toLowerCase();
-    attachTip(cf,
-      `How much weight this projection deserves, scored ${Math.round(conf.score * 100)} out of 100 from three things you can check: ` +
-      `how straight the trend has been (R ${fmt(Math.abs(d.r), 2)}), whether there is a full window of history ` +
-      `(${d.bars} of 100 bars), and how wide the statistical range still is at ${ms[ms.length - 1][1]} ` +
-      `(±${fmt(conf.spread * 100, 0)}% of today's price). It describes how well the channel has fitted the past — ` +
-      `it is not the probability of the forecast coming true.`);
-    head.append(cf);
+    head.append("Trend forecast", infoIcon(DEFS.outlook));
+
+    // one confidence badge per checkpoint — it decays with distance, which is the
+    // whole point, so a single number for the panel would hide the useful part
+    const confPip = (c, h, word) => {
+      const cf = el("span", "conf");
+      const pipbox = el("span", "pips");
+      for (let p = 1; p <= 3; p++) pipbox.append(el("i", p <= c.pips ? "on" : ""));
+      cf.append(pipbox, el("b", "", c.label));
+      cf.dataset.lv = c.label.toLowerCase();
+      attachTip(cf,
+        `${c.label} — ${Math.round(c.score * 100)} out of 100 for the ${word} projection. It is driven mostly by how ` +
+        `straight the trend has actually been (R ${fmt(Math.abs(d.r), 2)}), because extending a line that never described ` +
+        `the price is worthless however tidy the arithmetic looks; then adjusted for how wide the range still is by then ` +
+        `(±${fmt(c.spread * 100, 0)}% of today's price) and whether there is a full window of history (${d.bars} of 100 bars). ` +
+        `It scores how well the channel has fitted the past — it is not the probability of the forecast coming true.`);
+      return cf;
+    };
 
     const p1 = el("p");
     p1.append(el("b", "", d.sym), ` is ${d.zone.toLowerCase().replace("on the", "sitting on its").replace("below lower band", "below its floor")} ` +
@@ -1620,17 +1656,22 @@ function chartPanel(d, ser) {
 
     // the checkpoints, matching the dots on the chart
     const grid = el("div", "fcgrid");
-    const hdr = ["By", "Trend line reaches", "Vs today's price", "95% range"];
-    for (const h2 of hdr) grid.append(el("div", "fh", h2));
+    for (const h2 of ["By", "Trend line reaches", "Vs today's price", "50% of the time",
+                      "95% of the time", "Confidence"]) grid.append(el("div", "fh", h2));
     for (const [h, word] of ms) {
-      const target = midAt(n - 1 + h), band = 2 * seH(h);
+      const target = midAt(n - 1 + h);
+      const b50 = 0.674 * seH(h), b95 = 1.960 * seH(h);
       const mv = (target / d.price - 1) * 100;
       const cell = el("div", "fd");
       cell.append(el("b", "", dateLong(h)), el("span", "fsub", word + " out"));
       grid.append(cell,
         el("div", "fd num", money(target)),
         el("div", "fd num" + (mv >= 0 ? " up" : " down"), (mv >= 0 ? "+" : "") + fmt(mv, 1) + "%"),
-        el("div", "fd num fsub", money(target - band) + " – " + money(target + band)));
+        el("div", "fd num", money(target - b50) + " – " + money(target + b50)),
+        el("div", "fd num fsub", money(target - b95) + " – " + money(target + b95)));
+      const cc = el("div", "fd");
+      cc.append(confPip(fcConfidence(d, seH, h), h, word));
+      grid.append(cc);
     }
 
     // when price sits well off its own trend line, most of the "Vs today" number
@@ -1648,8 +1689,9 @@ function chartPanel(d, ser) {
     const p3 = el("p");
     p3.textContent = bits.join(" ");
     const p4 = el("p", "hint",
-      `Each row continues the last ${d.bars} bars' trend line to that date — the dots on the chart are the same numbers. ` +
-      `The range is a 95% prediction interval, so it widens the further out you look. ` +
+      `Each row continues the last ${d.bars} bars' trend line to that date — the dots on the chart are the same numbers, ` +
+      `and the three shaded bands behind them are these same ranges: the dark inner band is where price lands about half ` +
+      `the time, the palest one 95% of the time. Both widen the further out you look, which is why confidence falls. ` +
       `Arithmetic from past prices only: no news, no earnings results, not advice.`);
     outlookEl.append(head, p1, grid);
     if (bits.length) outlookEl.append(p3);
@@ -1660,6 +1702,12 @@ function chartPanel(d, ser) {
   key.append(attachTip(keyItem("Upper band", css("--dv-hi1")), DEFS.upper),
              attachTip(keyItem("Regression", css("--muted")), DEFS.mid),
              attachTip(keyItem("Lower band", css("--dv-lo1")), DEFS.lower));
+  fcKey = attachTip(keyMark("▮", css("--accent"), "Forecast · 50 / 80 / 95% bands"),
+    "The three shaded bands to the right of the last bar are where the model expects price to be. " +
+    "The darkest, narrowest one covers about half the outcomes; the palest covers 95%. They fan out " +
+    "with distance because a straight line fitted to the past tells you less the further ahead you look.");
+  fcKey.hidden = !S.fc;
+  key.append(fcKey);
   if ((ser.div || []).length) key.append(attachTip(keyMark("◆", css("--star"), "Ex-dividend"),
     "Gold diamonds mark days the stock traded without its next dividend payment — the price usually slips by about the dividend amount."));
   if (ser.earn) {
